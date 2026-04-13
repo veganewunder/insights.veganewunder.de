@@ -1,4 +1,5 @@
 import { fetchMetaRecentContent, fetchMetaRecentStories } from "@/lib/meta/content";
+import { DEFAULT_CONTENT_TYPE } from "@/lib/insights/content-config";
 import { Panel } from "@/components/ui/panel";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { MediaGallery } from "@/components/dashboard/media-gallery";
@@ -10,7 +11,9 @@ export async function LiveMetaContentPanel() {
       fetchMetaRecentStories(),
     ]);
 
-    const reels = reelsResult.status === "fulfilled" ? reelsResult.value : [];
+    const reels = (reelsResult.status === "fulfilled" ? reelsResult.value : []).filter(
+      (item) => item.contentType === "reels",
+    );
     const stories = storiesResult.status === "fulfilled" ? storiesResult.value : [];
 
     return (
@@ -19,7 +22,10 @@ export async function LiveMetaContentPanel() {
           title="Reels und Stories"
           description="Aktuelle Inhalte aus deinem verbundenen Instagram Account"
         />
-        <MediaGallery reels={reels} stories={stories} />
+        <MediaGallery
+          items={reels.length > 0 ? reels : stories}
+          contentType={reels.length > 0 ? DEFAULT_CONTENT_TYPE : "stories"}
+        />
       </Panel>
     );
   } catch (error) {

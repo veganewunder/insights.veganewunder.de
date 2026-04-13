@@ -1,6 +1,7 @@
 import { fetchMetaPagesWithInstagramAccounts } from "@/lib/meta/account";
 import { fetchMetaAudienceSummary } from "@/lib/meta/audience";
 import { fetchMetaRecentContent, fetchMetaRecentStories } from "@/lib/meta/content";
+import { buildContentInsights, getDefaultContentSlice } from "@/lib/insights/content-insights";
 import {
   fetchMetaInsightsForWindow,
   transformMetaInsightsWindow,
@@ -11,8 +12,6 @@ import {
   AudienceBreakdownItem,
   ClientDashboardRecord,
   KpiCardRecord,
-  MetaContentItem,
-  TimelinePoint,
 } from "@/types/insights";
 
 const LIVE_SHARE_TOKEN = "live-meta";
@@ -46,25 +45,6 @@ function buildKpiCard(
   };
 }
 
-function buildContentPerformance(items: MetaContentItem[]) {
-  return items.slice(0, 3).map((item) => ({
-    id: item.id,
-    title: item.title,
-    platformLabel: item.platformLabel,
-    secondaryLabel: item.mediaTypeLabel,
-    primaryValue: `${item.likeCount.toLocaleString("de-DE")} Likes`,
-    changeLabel: `${item.commentCount.toLocaleString("de-DE")} Kommentare`,
-  }));
-}
-
-function buildTimelineFromContent(items: MetaContentItem[]): TimelinePoint[] {
-  return items.slice(0, 6).map((item, index) => ({
-    label: `P${index + 1}`,
-    value: item.likeCount + item.commentCount,
-    displayValue: formatCompactNumber(item.likeCount + item.commentCount),
-  }));
-}
-
 const emptyAudience: {
   countries: AudienceBreakdownItem[];
   cities: AudienceBreakdownItem[];
@@ -85,8 +65,8 @@ export async function getLiveDashboardClient(): Promise<ClientDashboardRecord> {
       fetchMetaInsightsForWindow(7, 7),
       fetchMetaInsightsForWindow(30),
       fetchMetaInsightsForWindow(30, 30),
-      fetchMetaRecentContent(6),
-      fetchMetaRecentStories().catch(() => []),
+      fetchMetaRecentContent(30),
+      fetchMetaRecentStories(12).catch(() => []),
       fetchMetaAudienceSummary().catch(() => emptyAudience),
     ]);
 
@@ -103,6 +83,12 @@ export async function getLiveDashboardClient(): Promise<ClientDashboardRecord> {
   const previous7 = transformMetaInsightsWindow(previous7Response);
   const last30 = transformMetaInsightsWindow(last30Response);
   const previous30 = transformMetaInsightsWindow(previous30Response);
+  const allContent = [...recentContent, ...recentStories];
+  const contentInsights = buildContentInsights(allContent);
+  const defaultLast7Slice = getDefaultContentSlice(contentInsights, "7d");
+  const defaultLast30Slice = getDefaultContentSlice(contentInsights, "30d");
+  const posts = recentContent.filter((item) => item.contentType === "posts");
+  const reels = recentContent.filter((item) => item.contentType === "reels");
 
   return {
     id: "live-meta-client",
@@ -110,6 +96,7 @@ export async function getLiveDashboardClient(): Promise<ClientDashboardRecord> {
     name: clientName,
     notes: "Live Daten aus dem verbundenen Instagram Business Account",
     accountSummary: `Instagram Business Account ${configuredInstagramId ?? ""}`.trim(),
+    igUsername: "",
     shareToken: LIVE_SHARE_TOKEN,
     shareExpiresLabel: "Unbegrenzt",
     lastSyncedAt: new Date(),
@@ -130,16 +117,18 @@ export async function getLiveDashboardClient(): Promise<ClientDashboardRecord> {
       "7d": audienceSummary,
       "30d": audienceSummary,
     },
+    contentInsights,
     timeline: {
-      "7d": buildTimelineFromContent(recentContent),
-      "30d": buildTimelineFromContent(recentContent),
+      "7d": defaultLast7Slice.timeline,
+      "30d": defaultLast30Slice.timeline,
     },
     contentPerformance: {
-      "7d": buildContentPerformance(recentContent),
-      "30d": buildContentPerformance(recentContent),
+      "7d": defaultLast7Slice.content,
+      "30d": defaultLast30Slice.content,
     },
     mediaGallery: {
-      reels: recentContent,
+      reels,
+      posts,
       stories: recentStories,
     },
   };

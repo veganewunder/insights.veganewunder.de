@@ -2,18 +2,27 @@ import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { LiveDataErrorPanel } from "@/components/dashboard/live-data-error-panel";
 import { OverviewCard } from "@/components/dashboard/overview-card";
 import { ShareLinksManager } from "@/components/dashboard/share-links-manager";
+import { StoryArchivePanel } from "@/components/dashboard/story-archive-panel";
 import { Panel } from "@/components/ui/panel";
 import { SectionHeading } from "@/components/ui/section-heading";
+import { getAppBaseUrl } from "@/lib/app-url";
 import { getDashboardClient } from "@/lib/data/dashboard-store";
 import { getShareLinksForClient, getFirstClientId } from "@/lib/data/share-links";
+import { getStoredStories, getFirstAccountId } from "@/lib/data/story-archive";
 import { formatDateTime } from "@/lib/insights/formatters";
 
 export default async function DashboardPage() {
   try {
     const client = await getDashboardClient();
-    const clientId = await getFirstClientId();
-    const shareLinks = clientId ? await getShareLinksForClient(clientId) : [];
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://insights.veganewunder.de";
+    const [clientId, accountId, baseUrl] = await Promise.all([
+      getFirstClientId(),
+      getFirstAccountId(),
+      getAppBaseUrl(),
+    ]);
+    const [shareLinks, storedStories] = await Promise.all([
+      clientId ? getShareLinksForClient(clientId) : Promise.resolve([]),
+      accountId ? getStoredStories(accountId) : Promise.resolve([]),
+    ]);
 
     return (
       <DashboardShell>
@@ -48,6 +57,14 @@ export default async function DashboardPage() {
               Kein Client in der Datenbank gefunden. Führe zuerst einen Sync durch.
             </p>
           )}
+        </Panel>
+
+        <Panel className="p-5">
+          <SectionHeading
+            title="Story-Archiv"
+            description="Gespeicherte Stories mit Insights-Download. Neue Stories werden automatisch bei jedem Sync erfasst."
+          />
+          <StoryArchivePanel initialStories={storedStories} />
         </Panel>
 
         <Panel className="p-5">

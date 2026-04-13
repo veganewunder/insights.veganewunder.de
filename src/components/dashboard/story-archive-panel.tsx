@@ -20,6 +20,8 @@ function formatDate(value: string | null) {
 function toMetaContentItem(row: StorySnapshotRow): MetaContentItem {
   return {
     id: row.story_id,
+    contentType: "stories",
+    contentTypeLabel: "Stories",
     title: row.caption ?? "Story",
     caption: row.caption,
     platformLabel: "Instagram",
@@ -29,6 +31,7 @@ function toMetaContentItem(row: StorySnapshotRow): MetaContentItem {
     publishedAt: row.timestamp,
     likeCount: 0,
     commentCount: 0,
+    metrics: {},
   };
 }
 

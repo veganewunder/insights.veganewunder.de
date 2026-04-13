@@ -2,6 +2,7 @@ import { Platform } from "@/types/platform";
 
 export type RangeKey = "7d" | "30d";
 export type PeriodKey = "7d" | "30d" | "daily";
+export type ContentType = "reels" | "posts" | "stories";
 
 export type MetricKey =
   | "reach"
@@ -16,7 +17,16 @@ export type MetricKey =
   | "audience_age"
   | "subscribers"
   | "followers"
-  | "engagement_rate";
+  | "engagement_rate"
+  | "likes"
+  | "comments"
+  | "shares"
+  | "saves"
+  | "replies"
+  | "exits"
+  | "taps_forward"
+  | "taps_back"
+  | "interactions";
 
 export type ShareVisibilityKey =
   | "metric_reach"
@@ -69,6 +79,8 @@ export type ContentPerformanceItem = {
 
 export type MetaContentItem = {
   id: string;
+  contentType: ContentType;
+  contentTypeLabel: string;
   title: string;
   caption: string | null;
   platformLabel: string;
@@ -78,6 +90,14 @@ export type MetaContentItem = {
   publishedAt: string | null;
   likeCount: number;
   commentCount: number;
+  metrics: Partial<Record<MetricKey, number>>;
+};
+
+export type ContentInsightsRecord = {
+  metrics: KpiCardRecord[];
+  timeline: TimelinePoint[];
+  content: ContentPerformanceItem[];
+  media: MetaContentItem[];
 };
 
 export type ClientDashboardRecord = {
@@ -86,6 +106,7 @@ export type ClientDashboardRecord = {
   name: string;
   notes: string;
   accountSummary: string;
+  igUsername: string;
   shareToken: string;
   shareExpiresLabel: string;
   lastSyncedAt: Date;
@@ -100,10 +121,12 @@ export type ClientDashboardRecord = {
       gender: AudienceBreakdownItem[];
     }
   >;
+  contentInsights: Record<RangeKey, Record<ContentType, ContentInsightsRecord>>;
   timeline: Record<RangeKey, TimelinePoint[]>;
   contentPerformance: Record<RangeKey, ContentPerformanceItem[]>;
   mediaGallery: {
     reels: MetaContentItem[];
+    posts: MetaContentItem[];
     stories: MetaContentItem[];
   };
 };
@@ -182,7 +205,8 @@ export type DatabaseTables = {
     id: string;
     account_id: string;
     media_id: string;
-    media_kind: "reel" | "story";
+    media_kind: "reel" | "post" | "story";
+    content_type: ContentType;
     title: string;
     caption: string | null;
     platform_label: string;
@@ -192,6 +216,7 @@ export type DatabaseTables = {
     published_at: string | null;
     like_count: number;
     comment_count: number;
+    metrics_json?: Partial<Record<MetricKey, number>> | null;
     sort_order: number;
     fetched_at: string;
     created_at: string;

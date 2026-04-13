@@ -1,6 +1,14 @@
 import { TimelinePoint } from "@/types/insights";
 
 export function StoryTimeline({ points }: { points: TimelinePoint[] }) {
+  if (points.length === 0) {
+    return (
+      <div className="mt-6 rounded-2xl border border-line bg-zinc-50 px-4 py-6 text-sm text-stone">
+        Keine Verlaufspunkte für die aktuelle Auswahl verfügbar.
+      </div>
+    );
+  }
+
   const max = Math.max(...points.map((point) => point.value), 1);
 
   return (

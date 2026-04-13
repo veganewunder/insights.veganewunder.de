@@ -81,7 +81,8 @@ create table if not exists public.media_snapshots (
   id uuid primary key default gen_random_uuid(),
   account_id uuid not null references public.accounts(id) on delete cascade,
   media_id text not null,
-  media_kind text not null check (media_kind in ('reel', 'story')),
+  media_kind text not null check (media_kind in ('reel', 'post', 'story')),
+  content_type text not null check (content_type in ('reels', 'posts', 'stories')),
   title text not null,
   caption text,
   platform_label text not null,
@@ -91,6 +92,7 @@ create table if not exists public.media_snapshots (
   published_at timestamptz,
   like_count integer not null default 0,
   comment_count integer not null default 0,
+  metrics_json jsonb,
   sort_order integer not null default 0,
   fetched_at timestamptz not null,
   created_at timestamptz not null default now()

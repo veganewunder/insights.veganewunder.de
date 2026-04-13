@@ -109,12 +109,26 @@ function toTitleCase(value: string) {
     .join(" ");
 }
 
+const COUNTRY_NAMES: Record<string, string> = {
+  DE: "Deutschland", AT: "Österreich", CH: "Schweiz", US: "USA", GB: "Großbritannien",
+  FR: "Frankreich", IT: "Italien", ES: "Spanien", NL: "Niederlande", BE: "Belgien",
+  PL: "Polen", SE: "Schweden", NO: "Norwegen", DK: "Dänemark", FI: "Finnland",
+  PT: "Portugal", GR: "Griechenland", CZ: "Tschechien", HU: "Ungarn", RO: "Rumänien",
+  TR: "Türkei", RU: "Russland", UA: "Ukraine", AU: "Australien", CA: "Kanada",
+  BR: "Brasilien", MX: "Mexiko", AR: "Argentinien", JP: "Japan", CN: "China",
+  KR: "Südkorea", IN: "Indien", ZA: "Südafrika", SG: "Singapur", AE: "VAE",
+  LU: "Luxemburg", LI: "Liechtenstein", HR: "Kroatien", SK: "Slowakei", SI: "Slowenien",
+};
+
 function formatCountryLabel(value: string) {
-  return value.toUpperCase();
+  const code = value.toUpperCase();
+  return COUNTRY_NAMES[code] ?? code;
 }
 
 function formatCityLabel(value: string) {
-  return toTitleCase(value.replace(/_/g, " "));
+  // "Berlin, Berlin" → "Berlin" / "Munich, Bayern" → "München" — take only the part before the comma
+  const cityPart = value.split(",")[0].trim();
+  return toTitleCase(cityPart.replace(/_/g, " "));
 }
 
 function formatGenderLabel(value: string) {

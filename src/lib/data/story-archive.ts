@@ -1,6 +1,17 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { fetchMetaRecentStories } from "@/lib/meta/content";
 
+export async function getFirstAccountId(): Promise<string | null> {
+  const supabase = createSupabaseAdminClient();
+  const { data } = await supabase
+    .from("accounts")
+    .select("id")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return data?.id ?? null;
+}
+
 export type StorySnapshotRow = {
   id: string;
   account_id: string;

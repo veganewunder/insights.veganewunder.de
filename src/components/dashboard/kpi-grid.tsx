@@ -16,7 +16,13 @@ function ChangeBadge({ change, label }: { change: number; label: string }) {
   );
 }
 
-export function KpiGrid({ metrics }: { metrics: KpiCardRecord[] }) {
+export function KpiGrid({
+  metrics,
+  contextLabel,
+}: {
+  metrics: KpiCardRecord[];
+  contextLabel?: string;
+}) {
   return (
     <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {metrics.map((metric) => (
@@ -27,7 +33,9 @@ export function KpiGrid({ metrics }: { metrics: KpiCardRecord[] }) {
           <p className="mt-3 text-4xl font-bold tracking-tight text-ink">
             {metric.displayValue}
           </p>
-          <p className="mt-1 text-sm text-stone">{metric.platformAvailabilityLabel}</p>
+          <p className="mt-1 text-sm text-stone">
+            {contextLabel ?? metric.platformAvailabilityLabel}
+          </p>
           <div className="mt-4">
             <ChangeBadge change={metric.changePercent} label={metric.changeLabel} />
           </div>

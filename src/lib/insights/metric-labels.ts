@@ -14,6 +14,15 @@ const metricLabels: Record<MetricKey, string> = {
   subscribers: "Abonnenten",
   followers: "Follower",
   engagement_rate: "Engagement Rate",
+  likes: "Likes",
+  comments: "Kommentare",
+  shares: "Shares",
+  saves: "Saves",
+  replies: "Replies",
+  exits: "Exits",
+  taps_forward: "Weiter Taps",
+  taps_back: "Zurueck Taps",
+  interactions: "Interaktionen",
 };
 
 export function getMetricLabel(metricKey: MetricKey) {

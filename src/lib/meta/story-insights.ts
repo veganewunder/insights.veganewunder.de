@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { getMetaContentEnv, EnvConfigError } from "@/lib/env";
-import { MetaContentError } from "@/lib/meta/content";
+import { MetaContentError } from "@/lib/meta/errors";
 
 const META_GRAPH_VERSION = "v22.0";
 

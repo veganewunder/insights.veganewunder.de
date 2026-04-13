@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Heart, MessageCircle, Eye } from "lucide-react";
+import { Clapperboard, CirclePlay } from "lucide-react";
 import { MetaContentItem } from "@/types/insights";
+import type { MetricKey } from "@/types/insights";
 import { StoryDownloadButton } from "@/components/dashboard/story-download-button";
 
 function formatPublishedAt(value: string | null) {
@@ -14,13 +15,73 @@ function formatPublishedAt(value: string | null) {
   }).format(new Date(value));
 }
 
-function fmtNum(n: number) {
+function fmtNum(n: number | undefined) {
+  if (n === undefined || n === null) return "—";
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return n.toLocaleString("de-DE");
 }
 
-function MetaContentGrid({ items, isStories }: { items: MetaContentItem[]; isStories: boolean }) {
+type KpiOption = { key: MetricKey; label: string };
+
+const REEL_KPIS: KpiOption[] = [
+  { key: "views", label: "Aufrufe" },
+  { key: "reach", label: "Reichweite" },
+  { key: "likes", label: "Likes" },
+  { key: "comments", label: "Kommentare" },
+  { key: "shares", label: "Shares" },
+];
+
+const STORY_KPIS: KpiOption[] = [
+  { key: "views", label: "Aufrufe" },
+  { key: "reach", label: "Reichweite" },
+  { key: "replies", label: "Antworten" },
+];
+
+function KpiPills({
+  options,
+  items,
+  selected,
+  onSelect,
+}: {
+  options: KpiOption[];
+  items: MetaContentItem[];
+  selected: MetricKey;
+  onSelect: (key: MetricKey) => void;
+}) {
+  const available = options.filter((opt) =>
+    items.some((item) => (item.metrics[opt.key] ?? 0) > 0),
+  );
+  if (available.length === 0) return null;
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      {available.map((opt) => (
+        <button
+          key={opt.key}
+          type="button"
+          onClick={() => onSelect(opt.key)}
+          className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+            selected === opt.key
+              ? "bg-ink text-white"
+              : "bg-zinc-100 text-stone hover:bg-zinc-200 hover:text-ink"
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function MetaContentGrid({
+  items,
+  isStories,
+  selectedKpi,
+}: {
+  items: MetaContentItem[];
+  isStories: boolean;
+  selectedKpi: MetricKey;
+}) {
   if (items.length === 0) {
     return (
       <div className="mt-4 rounded-xl border border-line bg-zinc-50 p-5 text-sm text-stone">
@@ -32,64 +93,65 @@ function MetaContentGrid({ items, isStories }: { items: MetaContentItem[]; isSto
   }
 
   return (
-    <div className="mt-4 grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
-      {items.map((item) => (
-        <article
-          key={item.id}
-          className="overflow-hidden rounded-xl border border-line bg-panel shadow-panel"
-        >
-          <div className="aspect-square bg-zinc-100">
-            {item.mediaUrl ? (
-              <img
-                src={item.mediaUrl}
-                alt={item.title}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center text-xs text-stone">
-                Keine Vorschau
+    <div className="mt-4 grid grid-cols-3 gap-1 sm:gap-2">
+      {items.map((item) => {
+        const kpiValue = item.metrics[selectedKpi];
+        return (
+          <article key={item.id}>
+            <div className="relative aspect-square overflow-hidden rounded-lg bg-zinc-100">
+              {item.mediaUrl ? (
+                <img
+                  src={item.mediaUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center text-xs text-stone">
+                  Keine Vorschau
+                </div>
+              )}
+
+              {/* Media type icon — top right */}
+              <div className="absolute right-2 top-2 rounded-md bg-black/40 p-1 backdrop-blur-sm">
+                {isStories ? (
+                  <CirclePlay className="size-4 text-white" />
+                ) : (
+                  <Clapperboard className="size-4 text-white" />
+                )}
               </div>
-            )}
-          </div>
-          <div className="p-3">
-            <p className="line-clamp-2 text-sm font-medium leading-snug text-ink">
-              {item.caption ?? item.title}
-            </p>
-            <p className="mt-1 text-xs text-stone">{formatPublishedAt(item.publishedAt)}</p>
-            {!isStories && (
-              <div className="mt-2 flex items-center gap-3 text-xs text-stone">
-                <span className="flex items-center gap-1">
-                  <Heart className="size-3" />
-                  {fmtNum(item.likeCount)}
-                </span>
-                <span className="flex items-center gap-1">
-                  <MessageCircle className="size-3" />
-                  {fmtNum(item.commentCount)}
-                </span>
-                <span className="flex items-center gap-1">
-                  <Eye className="size-3" />
-                  —
-                </span>
-              </div>
-            )}
-            {isStories && (
-              <div className="mt-2">
-                <StoryDownloadButton story={item} />
-              </div>
-            )}
-            {item.permalink && (
-              <a
-                href={item.permalink}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-2 block text-xs font-medium text-stone underline underline-offset-2 hover:text-ink"
-              >
-                Beitrag öffnen
-              </a>
-            )}
-          </div>
-        </article>
-      ))}
+
+              {/* KPI value — bottom left */}
+              {kpiValue !== undefined && (
+                <div className="absolute bottom-2 left-2 rounded-md bg-black/50 px-2 py-0.5 backdrop-blur-sm">
+                  <span className="text-sm font-semibold tabular-nums text-white">
+                    {fmtNum(kpiValue)}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Below thumbnail */}
+            <div className="mt-1.5 px-0.5">
+              <p className="text-xs text-stone">{formatPublishedAt(item.publishedAt)}</p>
+              {isStories && (
+                <div className="mt-1">
+                  <StoryDownloadButton story={item} />
+                </div>
+              )}
+              {!isStories && item.permalink && (
+                <a
+                  href={item.permalink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-0.5 block text-xs text-stone underline underline-offset-2 hover:text-ink"
+                >
+                  Öffnen
+                </a>
+              )}
+            </div>
+          </article>
+        );
+      })}
     </div>
   );
 }
@@ -104,6 +166,14 @@ export function MetaContentTabs({
   stories: MetaContentItem[];
 }) {
   const [activeTab, setActiveTab] = useState<Tab>("reels");
+  const [reelKpi, setReelKpi] = useState<MetricKey>("views");
+  const [storyKpi, setStoryKpi] = useState<MetricKey>("views");
+
+  const isStories = activeTab === "stories";
+  const items = isStories ? stories : reels;
+  const kpiOptions = isStories ? STORY_KPIS : REEL_KPIS;
+  const selectedKpi = isStories ? storyKpi : reelKpi;
+  const setSelectedKpi = isStories ? setStoryKpi : setReelKpi;
 
   return (
     <div>
@@ -128,11 +198,14 @@ export function MetaContentTabs({
         </button>
       </div>
 
-      {activeTab === "reels" ? (
-        <MetaContentGrid items={reels} isStories={false} />
-      ) : (
-        <MetaContentGrid items={stories} isStories={true} />
-      )}
+      <KpiPills
+        options={kpiOptions}
+        items={items}
+        selected={selectedKpi}
+        onSelect={setSelectedKpi}
+      />
+
+      <MetaContentGrid items={items} isStories={isStories} selectedKpi={selectedKpi} />
     </div>
   );
 }

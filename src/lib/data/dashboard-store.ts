@@ -1,6 +1,7 @@
 import { PostgrestError } from "@supabase/supabase-js";
 import { fetchLiveDashboardClient } from "@/lib/data/live-dashboard";
 import { comparePercent, formatCompactNumber, formatPercent } from "@/lib/insights/comparisons";
+import { buildContentInsights, getDefaultContentSlice } from "@/lib/insights/content-insights";
 import { getMetricLabel } from "@/lib/insights/metric-labels";
 import { formatDateTime } from "@/lib/insights/formatters";
 import { fetchMetaRecentContent, fetchMetaRecentStories } from "@/lib/meta/content";
@@ -9,7 +10,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   AudienceBreakdownItem,
   ClientDashboardRecord,
-  ContentPerformanceItem,
+  ContentType,
   DatabaseTables,
   KpiCardRecord,
   MetaContentItem,
@@ -26,6 +27,21 @@ type ContentRow = DatabaseTables["content_snapshots"];
 type MediaRow = DatabaseTables["media_snapshots"];
 
 const LIVE_SHARE_TOKEN = "live-meta";
+
+async function fetchIgUsername(platformAccountId: string): Promise<string> {
+  try {
+    const token = process.env.META_ACCESS_TOKEN;
+    if (!token) return "";
+    const res = await fetch(
+      `https://graph.facebook.com/v22.0/${platformAccountId}?fields=username&access_token=${token}`,
+      { cache: "force-cache" },
+    );
+    const data = await res.json() as { username?: string };
+    return data.username ?? "";
+  } catch {
+    return "";
+  }
+}
 const METRIC_DISPLAY_ORDER: MetricKey[] = [
   "reach",
   "impressions",
@@ -151,50 +167,37 @@ function normalizeNullableText(value: string | null | undefined) {
   return sanitized || null;
 }
 
+function toMediaKind(contentType: ContentType): DatabaseTables["media_snapshots"]["media_kind"] {
+  if (contentType === "stories") return "story";
+  if (contentType === "posts") return "post";
+  return "reel";
+}
+
 function buildMediaRows(
-  reels: MetaContentItem[],
-  stories: MetaContentItem[],
+  items: MetaContentItem[],
   accountId: string,
   fetchedAt: string,
 ): DatabaseTables["media_snapshots"][] {
-  return [
-    ...reels.map((item, index) => ({
+  return items.map((item, index) => ({
       id: crypto.randomUUID(),
       account_id: accountId,
       media_id: item.id,
-      media_kind: "reel" as const,
+      media_kind: toMediaKind(item.contentType),
+      content_type: item.contentType,
       title: normalizeText(item.title, "Ohne Titel"),
       caption: normalizeText(item.caption),
       platform_label: normalizeText(item.platformLabel, "Instagram"),
-      media_type_label: normalizeText(item.mediaTypeLabel, "Reel"),
+      media_type_label: normalizeText(item.mediaTypeLabel, item.contentTypeLabel),
       media_url: normalizeNullableText(item.mediaUrl),
       permalink: normalizeNullableText(item.permalink),
       published_at: item.publishedAt,
       like_count: item.likeCount,
       comment_count: item.commentCount,
+      metrics_json: item.metrics,
       sort_order: index,
       fetched_at: fetchedAt,
       created_at: fetchedAt,
-    })),
-    ...stories.map((item, index) => ({
-      id: crypto.randomUUID(),
-      account_id: accountId,
-      media_id: item.id,
-      media_kind: "story" as const,
-      title: normalizeText(item.title, "Ohne Titel"),
-      caption: normalizeText(item.caption),
-      platform_label: normalizeText(item.platformLabel, "Instagram"),
-      media_type_label: normalizeText(item.mediaTypeLabel, "Story"),
-      media_url: normalizeNullableText(item.mediaUrl),
-      permalink: normalizeNullableText(item.permalink),
-      published_at: item.publishedAt,
-      like_count: item.likeCount,
-      comment_count: item.commentCount,
-      sort_order: index,
-      fetched_at: fetchedAt,
-      created_at: fetchedAt,
-    })),
-  ];
+    }));
 }
 
 function buildSnapshotRows(
@@ -411,24 +414,46 @@ async function readStoredClientBaseByToken(token: string) {
   return clientRow;
 }
 
-function buildTimelineFromContent(items: ContentPerformanceItem[]) {
-  return items.slice(0, 6).map((item, index) => {
-    const numeric = Number(item.primaryValue.replace(/[^\d]/g, "")) || 0;
+function resolveStoredContentType(row: MediaRow): ContentType {
+  // Stories always win
+  if (row.content_type === "stories" || row.media_kind === "story") {
+    return "stories";
+  }
 
-    return {
-      label: `P${index + 1}`,
-      value: numeric,
-      displayValue: formatCompactNumber(numeric),
-    };
-  });
+  // Permalink is the most reliable signal — /reel/ = Reel, regardless of what's stored
+  if (row.permalink?.includes("/reel/")) {
+    return "reels";
+  }
+
+  // media_type_label set during fetch
+  if (row.media_type_label === "Reel") {
+    return "reels";
+  }
+
+  if (row.content_type === "reels" || row.media_kind === "reel") {
+    return "reels";
+  }
+
+  if (row.media_type_label === "Post" || row.media_type_label === "Carousel" || row.media_type_label === "Video") {
+    return "posts";
+  }
+
+  if (row.content_type === "posts" || row.media_kind === "post") {
+    return "posts";
+  }
+
+  return "reels";
 }
 
-function toMetaContentItems(rows: MediaRow[], kind: MediaRow["media_kind"]) {
+function toMetaContentItems(rows: MediaRow[], contentType: ContentType) {
   return rows
-    .filter((row) => row.media_kind === kind)
+    .filter((row) => resolveStoredContentType(row) === contentType)
     .sort((left, right) => left.sort_order - right.sort_order)
     .map((row) => ({
       id: row.media_id,
+      contentType,
+      contentTypeLabel:
+        contentType === "stories" ? "Stories" : contentType === "posts" ? "Posts" : "Reels",
       title: row.title,
       caption: row.caption,
       platformLabel: row.platform_label,
@@ -438,6 +463,11 @@ function toMetaContentItems(rows: MediaRow[], kind: MediaRow["media_kind"]) {
       publishedAt: row.published_at,
       likeCount: row.like_count,
       commentCount: row.comment_count,
+      metrics: {
+        likes: row.like_count,
+        comments: row.comment_count,
+        ...(row.metrics_json ?? {}),
+      },
     }));
 }
 
@@ -494,11 +524,11 @@ async function hydrateStoredClient(clientRow: ClientRow): Promise<ClientDashboar
       .eq("account_id", accountId),
     supabase
       .from("content_snapshots")
-      .select("id, account_id, period_key, content_id, title, platform_label, secondary_label, primary_value, change_label, sort_order, fetched_at, created_at")
+      .select("*")
       .eq("account_id", accountId),
     supabase
       .from("media_snapshots")
-      .select("id, account_id, media_id, media_kind, title, caption, platform_label, media_type_label, media_url, permalink, published_at, like_count, comment_count, sort_order, fetched_at, created_at")
+      .select("*")
       .eq("account_id", accountId),
     supabase
       .from("share_links")
@@ -549,24 +579,12 @@ async function hydrateStoredClient(clientRow: ClientRow): Promise<ClientDashboar
       .map(buildStoredKpiCard);
   }
 
-  const contentByPeriod: Record<RangeKey, ContentPerformanceItem[]> = {
-    "7d": [],
-    "30d": [],
-  };
-
-  for (const periodKey of ["7d", "30d"] as const) {
-    contentByPeriod[periodKey] = contentRows
-      .filter((row) => row.period_key === periodKey)
-      .sort((left, right) => left.sort_order - right.sort_order)
-      .map((row) => ({
-        id: row.content_id,
-        title: row.title,
-        platformLabel: row.platform_label,
-        secondaryLabel: row.secondary_label,
-        primaryValue: row.primary_value,
-        changeLabel: row.change_label,
-      }));
-  }
+  const reels = toMetaContentItems(mediaRows, "reels");
+  const posts = toMetaContentItems(mediaRows, "posts");
+  const stories = toMetaContentItems(mediaRows, "stories");
+  const contentInsights = buildContentInsights([...reels, ...posts, ...stories]);
+  const defaultLast7Slice = getDefaultContentSlice(contentInsights, "7d");
+  const defaultLast30Slice = getDefaultContentSlice(contentInsights, "30d");
 
   const fetchedAtCandidates = [
     ...snapshots.map((row) => row.fetched_at),
@@ -595,6 +613,7 @@ async function hydrateStoredClient(clientRow: ClientRow): Promise<ClientDashboar
     name: clientRow.name,
     notes: clientRow.notes ?? "",
     accountSummary: `${account.account_name} / Instagram ${account.platform_account_id}`,
+    igUsername: await fetchIgUsername(account.platform_account_id),
     shareToken: shareLink?.token ?? LIVE_SHARE_TOKEN,
     shareExpiresLabel: shareLink?.expires_at_nullable
       ? formatDateTime(new Date(shareLink.expires_at_nullable))
@@ -606,14 +625,19 @@ async function hydrateStoredClient(clientRow: ClientRow): Promise<ClientDashboar
       "7d": audience,
       "30d": audience,
     },
+    contentInsights,
     timeline: {
-      "7d": buildTimelineFromContent(contentByPeriod["7d"]),
-      "30d": buildTimelineFromContent(contentByPeriod["30d"]),
+      "7d": defaultLast7Slice.timeline,
+      "30d": defaultLast30Slice.timeline,
     },
-    contentPerformance: contentByPeriod,
+    contentPerformance: {
+      "7d": defaultLast7Slice.content,
+      "30d": defaultLast30Slice.content,
+    },
     mediaGallery: {
-      reels: toMetaContentItems(mediaRows, "reel"),
-      stories: toMetaContentItems(mediaRows, "story"),
+      reels,
+      posts,
+      stories,
     },
   };
 }
@@ -633,9 +657,9 @@ export async function syncLiveDashboardToSupabase() {
   const { account } = await ensureStoredClient(client, instagramAccountId);
   const fetchedAt = new Date().toISOString();
   const supabase = createSupabaseAdminClient();
-  const [reels, stories] = await Promise.all([
-    fetchMetaRecentContent(10).catch(() => []),
-    fetchMetaRecentStories().catch(() => []),
+  const [contentItems, storyItems] = await Promise.all([
+    fetchMetaRecentContent(30).catch(() => []),
+    fetchMetaRecentStories(12).catch(() => []),
   ]);
 
   const [deleteSnapshots, deleteAudience, deleteContent, deleteMedia] = await Promise.all([
@@ -661,7 +685,7 @@ export async function syncLiveDashboardToSupabase() {
     primary_value: normalizeText(row.primary_value, "0"),
     change_label: normalizeText(row.change_label, "Keine Veraenderung"),
   }));
-  const mediaRows = buildMediaRows(reels, stories, account.id, fetchedAt);
+  const mediaRows = buildMediaRows([...contentItems, ...storyItems], account.id, fetchedAt);
 
   const insertSnapshots = await supabase.from("insight_snapshots").insert(snapshotRows);
   if (insertSnapshots.error) {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchStoryInsights } from "@/lib/meta/story-insights";
-import { MetaContentError } from "@/lib/meta/content";
+import { MetaContentError } from "@/lib/meta/errors";
 
 export async function GET(request: NextRequest) {
   const mediaId = request.nextUrl.searchParams.get("id");

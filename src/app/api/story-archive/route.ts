@@ -1,22 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { insertManualStoryIds, getStoredStories } from "@/lib/data/story-archive";
-import { getFirstClientId } from "@/lib/data/share-links";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-
-async function getAccountIdForFirstClient(): Promise<string | null> {
-  const supabase = createSupabaseAdminClient();
-  const { data } = await supabase
-    .from("accounts")
-    .select("id")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  return data?.id ?? null;
-}
+import { insertManualStoryIds, getStoredStories, getFirstAccountId } from "@/lib/data/story-archive";
 
 export async function GET() {
   try {
-    const accountId = await getAccountIdForFirstClient();
+    const accountId = await getFirstAccountId();
     if (!accountId) return NextResponse.json({ stories: [] });
     const stories = await getStoredStories(accountId);
     return NextResponse.json({ stories });
@@ -32,7 +19,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Keine Story IDs übergeben" }, { status: 400 });
     }
 
-    const accountId = await getAccountIdForFirstClient();
+    const accountId = await getFirstAccountId();
     if (!accountId) return NextResponse.json({ message: "Kein Account gefunden" }, { status: 404 });
 
     const count = await insertManualStoryIds(accountId, body.storyIds);

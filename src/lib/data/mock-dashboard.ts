@@ -1,7 +1,9 @@
 import {
   AudienceBreakdownItem,
   ClientDashboardRecord,
+  ContentInsightsRecord,
   ContentPerformanceItem,
+  ContentType,
   KpiCardRecord,
   TimelinePoint,
 } from "@/types/insights";
@@ -54,6 +56,29 @@ function buildContent(
 
 const timelineLabels7d = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const timelineLabels30d = ["W1", "W2", "W3", "W4"];
+
+function buildEmptyContentInsightsRecord(): ContentInsightsRecord {
+  return {
+    metrics: [],
+    timeline: [],
+    content: [],
+    media: [],
+  };
+}
+
+function buildEmptyContentInsights(): ClientDashboardRecord["contentInsights"] {
+  const createByType = () =>
+    ({
+      reels: buildEmptyContentInsightsRecord(),
+      posts: buildEmptyContentInsightsRecord(),
+      stories: buildEmptyContentInsightsRecord(),
+    }) as Record<ContentType, ContentInsightsRecord>;
+
+  return {
+    "7d": createByType(),
+    "30d": createByType(),
+  };
+}
 
 export const clients: ClientDashboardRecord[] = [
   {
@@ -142,6 +167,7 @@ export const clients: ClientDashboardRecord[] = [
         ]),
       },
     },
+    contentInsights: buildEmptyContentInsights(),
     timeline: {
       "7d": buildTimeline(timelineLabels7d, [29200, 33100, 34700, 36200, 38100, 40300, 44800]),
       "30d": buildTimeline(timelineLabels30d, [231000, 248000, 257000, 306000]),
@@ -186,6 +212,7 @@ export const clients: ClientDashboardRecord[] = [
     },
     mediaGallery: {
       reels: [],
+      posts: [],
       stories: [],
     },
   },
@@ -263,6 +290,7 @@ export const clients: ClientDashboardRecord[] = [
         gender: buildAudience([["f", "Frauen", 76], ["m", "Männer", 22], ["u", "Keine Angabe", 2]]),
       },
     },
+    contentInsights: buildEmptyContentInsights(),
     timeline: {
       "7d": buildTimeline(timelineLabels7d, [3900, 4050, 4220, 4310, 4470, 4540, 4910]),
       "30d": buildTimeline(timelineLabels30d, [28100, 29400, 30200, 33700]),
@@ -307,6 +335,7 @@ export const clients: ClientDashboardRecord[] = [
     },
     mediaGallery: {
       reels: [],
+      posts: [],
       stories: [],
     },
   },
@@ -388,6 +417,7 @@ export const clients: ClientDashboardRecord[] = [
         gender: buildAudience([["f", "Frauen", 74], ["m", "Männer", 24], ["u", "Keine Angabe", 2]]),
       },
     },
+    contentInsights: buildEmptyContentInsights(),
     timeline: {
       "7d": buildTimeline(timelineLabels7d, [9800, 10200, 10800, 11500, 11900, 12700, 13200]),
       "30d": buildTimeline(timelineLabels30d, [74400, 78100, 81200, 91100]),
@@ -432,6 +462,7 @@ export const clients: ClientDashboardRecord[] = [
     },
     mediaGallery: {
       reels: [],
+      posts: [],
       stories: [],
     },
   },
