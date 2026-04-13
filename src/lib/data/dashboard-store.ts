@@ -1,9 +1,9 @@
 import { PostgrestError } from "@supabase/supabase-js";
 import { fetchLiveDashboardClient } from "@/lib/data/live-dashboard";
-import { syncActiveStoriesToSupabase } from "@/lib/data/story-archive";
 import { comparePercent, formatCompactNumber, formatPercent } from "@/lib/insights/comparisons";
 import { getMetricLabel } from "@/lib/insights/metric-labels";
 import { formatDateTime } from "@/lib/insights/formatters";
+import { fetchMetaRecentContent, fetchMetaRecentStories } from "@/lib/meta/content";
 import { isSupabaseServerConfigured } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
@@ -12,6 +12,7 @@ import {
   ContentPerformanceItem,
   DatabaseTables,
   KpiCardRecord,
+  MetaContentItem,
   MetricKey,
   RangeKey,
 } from "@/types/insights";
@@ -22,6 +23,7 @@ type SnapshotRow = DatabaseTables["insight_snapshots"];
 type AudienceRow = DatabaseTables["audience_breakdowns"];
 type ShareLinkRow = DatabaseTables["share_links"];
 type ContentRow = DatabaseTables["content_snapshots"];
+type MediaRow = DatabaseTables["media_snapshots"];
 
 const LIVE_SHARE_TOKEN = "live-meta";
 const METRIC_DISPLAY_ORDER: MetricKey[] = [
@@ -106,6 +108,52 @@ function buildContentRows(
       created_at: fetchedAt,
     })),
   );
+}
+
+function buildMediaRows(
+  reels: MetaContentItem[],
+  stories: MetaContentItem[],
+  accountId: string,
+  fetchedAt: string,
+): DatabaseTables["media_snapshots"][] {
+  return [
+    ...reels.map((item, index) => ({
+      id: crypto.randomUUID(),
+      account_id: accountId,
+      media_id: item.id,
+      media_kind: "reel" as const,
+      title: item.title,
+      caption: item.caption,
+      platform_label: item.platformLabel,
+      media_type_label: item.mediaTypeLabel,
+      media_url: item.mediaUrl,
+      permalink: item.permalink,
+      published_at: item.publishedAt,
+      like_count: item.likeCount,
+      comment_count: item.commentCount,
+      sort_order: index,
+      fetched_at: fetchedAt,
+      created_at: fetchedAt,
+    })),
+    ...stories.map((item, index) => ({
+      id: crypto.randomUUID(),
+      account_id: accountId,
+      media_id: item.id,
+      media_kind: "story" as const,
+      title: item.title,
+      caption: item.caption,
+      platform_label: item.platformLabel,
+      media_type_label: item.mediaTypeLabel,
+      media_url: item.mediaUrl,
+      permalink: item.permalink,
+      published_at: item.publishedAt,
+      like_count: item.likeCount,
+      comment_count: item.commentCount,
+      sort_order: index,
+      fetched_at: fetchedAt,
+      created_at: fetchedAt,
+    })),
+  ];
 }
 
 function buildSnapshotRows(
@@ -246,7 +294,7 @@ async function ensureStoredClient(
 }
 
 function isMissingTable(error: PostgrestError | null) {
-  return error?.code === "42P01";
+  return error?.code === "42P01" || error?.code === "PGRST205";
 }
 
 async function readStoredClientBaseBySlug(slug: string) {
@@ -334,6 +382,24 @@ function buildTimelineFromContent(items: ContentPerformanceItem[]) {
   });
 }
 
+function toMetaContentItems(rows: MediaRow[], kind: MediaRow["media_kind"]) {
+  return rows
+    .filter((row) => row.media_kind === kind)
+    .sort((left, right) => left.sort_order - right.sort_order)
+    .map((row) => ({
+      id: row.media_id,
+      title: row.title,
+      caption: row.caption,
+      platformLabel: row.platform_label,
+      mediaTypeLabel: row.media_type_label,
+      mediaUrl: row.media_url,
+      permalink: row.permalink,
+      publishedAt: row.published_at,
+      likeCount: row.like_count,
+      commentCount: row.comment_count,
+    }));
+}
+
 function toAudienceItems(rows: AudienceRow[], breakdownType: AudienceRow["breakdown_type"]) {
   return rows
     .filter((row) => row.breakdown_type === breakdownType)
@@ -369,6 +435,7 @@ async function hydrateStoredClient(clientRow: ClientRow): Promise<ClientDashboar
     snapshotResult,
     audienceResult,
     contentResult,
+    mediaResult,
     shareResult,
   ] = await Promise.all([
     supabase
@@ -389,6 +456,10 @@ async function hydrateStoredClient(clientRow: ClientRow): Promise<ClientDashboar
       .select("id, account_id, period_key, content_id, title, platform_label, secondary_label, primary_value, change_label, sort_order, fetched_at, created_at")
       .eq("account_id", accountId),
     supabase
+      .from("media_snapshots")
+      .select("id, account_id, media_id, media_kind, title, caption, platform_label, media_type_label, media_url, permalink, published_at, like_count, comment_count, sort_order, fetched_at, created_at")
+      .eq("account_id", accountId),
+    supabase
       .from("share_links")
       .select("id, client_id, token, password_hash_nullable, expires_at_nullable, is_active, created_at")
       .eq("client_id", clientRow.id)
@@ -406,6 +477,9 @@ async function hydrateStoredClient(clientRow: ClientRow): Promise<ClientDashboar
   if (contentResult.error && !isMissingTable(contentResult.error)) {
     throw new Error(contentResult.error.message);
   }
+  if (mediaResult.error && !isMissingTable(mediaResult.error)) {
+    throw new Error(mediaResult.error.message);
+  }
   if (shareResult.error && !isMissingTable(shareResult.error)) {
     throw new Error(shareResult.error.message);
   }
@@ -414,6 +488,7 @@ async function hydrateStoredClient(clientRow: ClientRow): Promise<ClientDashboar
   const snapshots = (snapshotResult.data ?? []) as SnapshotRow[];
   const audienceRows = (audienceResult.data ?? []) as AudienceRow[];
   const contentRows = (contentResult.data ?? []) as ContentRow[];
+  const mediaRows = (mediaResult.data ?? []) as MediaRow[];
   const shareLink = (shareResult.data ?? null) as ShareLinkRow | null;
 
   if (!account || snapshots.length === 0) {
@@ -456,6 +531,7 @@ async function hydrateStoredClient(clientRow: ClientRow): Promise<ClientDashboar
     ...snapshots.map((row) => row.fetched_at),
     ...audienceRows.map((row) => row.fetched_at),
     ...contentRows.map((row) => row.fetched_at),
+    ...mediaRows.map((row) => row.fetched_at),
   ]
     .filter(Boolean)
     .map((value) => new Date(value).getTime())
@@ -494,6 +570,10 @@ async function hydrateStoredClient(clientRow: ClientRow): Promise<ClientDashboar
       "30d": buildTimelineFromContent(contentByPeriod["30d"]),
     },
     contentPerformance: contentByPeriod,
+    mediaGallery: {
+      reels: toMetaContentItems(mediaRows, "reel"),
+      stories: toMetaContentItems(mediaRows, "story"),
+    },
   };
 }
 
@@ -512,14 +592,19 @@ export async function syncLiveDashboardToSupabase() {
   const { account } = await ensureStoredClient(client, instagramAccountId);
   const fetchedAt = new Date().toISOString();
   const supabase = createSupabaseAdminClient();
+  const [reels, stories] = await Promise.all([
+    fetchMetaRecentContent(10).catch(() => []),
+    fetchMetaRecentStories().catch(() => []),
+  ]);
 
-  const [deleteSnapshots, deleteAudience, deleteContent] = await Promise.all([
+  const [deleteSnapshots, deleteAudience, deleteContent, deleteMedia] = await Promise.all([
     supabase.from("insight_snapshots").delete().eq("account_id", account.id),
     supabase.from("audience_breakdowns").delete().eq("account_id", account.id),
     supabase.from("content_snapshots").delete().eq("account_id", account.id),
+    supabase.from("media_snapshots").delete().eq("account_id", account.id),
   ]);
 
-  for (const result of [deleteSnapshots, deleteAudience, deleteContent]) {
+  for (const result of [deleteSnapshots, deleteAudience, deleteContent, deleteMedia]) {
     if (result.error && !isMissingTable(result.error)) {
       throw new Error(result.error.message);
     }
@@ -528,6 +613,7 @@ export async function syncLiveDashboardToSupabase() {
   const snapshotRows = buildSnapshotRows(client, account.id, fetchedAt);
   const audienceRows = buildAudienceRows(client, account.id, fetchedAt);
   const contentRows = buildContentRows(client, account.id, fetchedAt);
+  const mediaRows = buildMediaRows(reels, stories, account.id, fetchedAt);
 
   const insertSnapshots = await supabase.from("insight_snapshots").insert(snapshotRows);
   if (insertSnapshots.error) {
@@ -548,14 +634,19 @@ export async function syncLiveDashboardToSupabase() {
     }
   }
 
-  const storyCount = await syncActiveStoriesToSupabase(account.id).catch(() => 0);
+  if (mediaRows.length > 0) {
+    const insertMedia = await supabase.from("media_snapshots").insert(mediaRows);
+    if (insertMedia.error) {
+      console.error("media_snapshots_sync_warning", insertMedia.error.message);
+    }
+  }
 
   return {
     accountId: account.id,
     snapshotCount: snapshotRows.length,
     audienceCount: audienceRows.length,
     contentCount: contentRows.length,
-    storyCount,
+    mediaCount: mediaRows.length,
     syncedAt: fetchedAt,
   };
 }

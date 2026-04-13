@@ -1,7 +1,7 @@
 import { fetchMetaRecentContent, fetchMetaRecentStories } from "@/lib/meta/content";
 import { Panel } from "@/components/ui/panel";
 import { SectionHeading } from "@/components/ui/section-heading";
-import { MetaContentTabs } from "@/components/dashboard/meta-content-tabs";
+import { MediaGallery } from "@/components/dashboard/media-gallery";
 
 export async function LiveMetaContentPanel() {
   try {
@@ -16,10 +16,10 @@ export async function LiveMetaContentPanel() {
     return (
       <Panel className="p-5">
         <SectionHeading
-          title="Recent Content"
-          description="Deine erfolgreichsten Beiträge im Analysezeitraum"
+          title="Reels und Stories"
+          description="Aktuelle Inhalte aus deinem verbundenen Instagram Account"
         />
-        <MetaContentTabs reels={reels} stories={stories} />
+        <MediaGallery reels={reels} stories={stories} />
       </Panel>
     );
   } catch (error) {
@@ -28,7 +28,7 @@ export async function LiveMetaContentPanel() {
     return (
       <Panel className="p-5">
         <SectionHeading
-          title="Recent Content"
+          title="Reels und Stories"
           description="Der Content Bereich ist aktuell nicht abrufbar."
         />
         <div className="mt-4 rounded-xl border border-line bg-zinc-50 p-4 text-sm text-stone">

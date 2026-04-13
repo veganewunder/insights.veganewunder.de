@@ -5,7 +5,7 @@ import { ContentPerformanceList } from "@/components/dashboard/content-performan
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { LiveDataErrorPanel } from "@/components/dashboard/live-data-error-panel";
 import { KpiGrid } from "@/components/dashboard/kpi-grid";
-import { LiveMetaContentPanel } from "@/components/dashboard/live-meta-content-panel";
+import { MediaGallery } from "@/components/dashboard/media-gallery";
 import { StoryTimeline } from "@/components/dashboard/story-timeline";
 import { SyncBanner } from "@/components/dashboard/sync-banner";
 import { Panel } from "@/components/ui/panel";
@@ -138,8 +138,16 @@ export default async function ClientPage({ params, searchParams }: PageProps) {
           <ContentPerformanceList items={content} />
         </Panel>
 
-        {/* Recent Content */}
-        <LiveMetaContentPanel />
+        <Panel className="p-5">
+          <SectionHeading
+            title="Reels und Stories"
+            description="Aktuelle Inhalte aus dem gespeicherten Dashboard Sync"
+          />
+          <MediaGallery
+            reels={client.mediaGallery.reels}
+            stories={client.mediaGallery.stories}
+          />
+        </Panel>
       </DashboardShell>
     );
   } catch (error) {

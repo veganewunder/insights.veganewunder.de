@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createShareLink, getFirstClientId } from "@/lib/data/share-links";
+import { sanitizeShareVisibility } from "@/lib/share-visibility";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json() as { clientId?: string };
+    const body = await request.json() as { clientId?: string; visibleSections?: unknown };
     const clientId = body.clientId ?? await getFirstClientId();
 
     if (!clientId) {
       return NextResponse.json({ message: "Kein Client gefunden" }, { status: 404 });
     }
 
-    const link = await createShareLink(clientId);
+    const link = await createShareLink(clientId, sanitizeShareVisibility(body.visibleSections));
     return NextResponse.json(link, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Fehler beim Erstellen";

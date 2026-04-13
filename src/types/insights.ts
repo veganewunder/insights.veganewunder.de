@@ -18,6 +18,23 @@ export type MetricKey =
   | "followers"
   | "engagement_rate";
 
+export type ShareVisibilityKey =
+  | "metric_reach"
+  | "metric_impressions"
+  | "metric_views"
+  | "metric_story_views"
+  | "metric_profile_views"
+  | "metric_clicks"
+  | "metric_watch_time"
+  | "metric_avg_view_duration"
+  | "audience_countries"
+  | "audience_cities"
+  | "audience_age_groups"
+  | "audience_gender"
+  | "timeline"
+  | "content_performance"
+  | "media_gallery";
+
 export type KpiCardRecord = {
   key: MetricKey;
   label: string;
@@ -85,6 +102,10 @@ export type ClientDashboardRecord = {
   >;
   timeline: Record<RangeKey, TimelinePoint[]>;
   contentPerformance: Record<RangeKey, ContentPerformanceItem[]>;
+  mediaGallery: {
+    reels: MetaContentItem[];
+    stories: MetaContentItem[];
+  };
 };
 
 export type DatabaseTables = {
@@ -157,10 +178,29 @@ export type DatabaseTables = {
     fetched_at: string;
     created_at: string;
   };
+  media_snapshots: {
+    id: string;
+    account_id: string;
+    media_id: string;
+    media_kind: "reel" | "story";
+    title: string;
+    caption: string | null;
+    platform_label: string;
+    media_type_label: string;
+    media_url: string | null;
+    permalink: string | null;
+    published_at: string | null;
+    like_count: number;
+    comment_count: number;
+    sort_order: number;
+    fetched_at: string;
+    created_at: string;
+  };
   share_links: {
     id: string;
     client_id: string;
     token: string;
+    visible_sections_json: ShareVisibilityKey[] | null;
     password_hash_nullable: string | null;
     expires_at_nullable: string | null;
     is_active: boolean;

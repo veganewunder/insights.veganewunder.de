@@ -1,10 +1,10 @@
 import { fetchMetaPagesWithInstagramAccounts } from "@/lib/meta/account";
 import { fetchMetaAudienceSummary } from "@/lib/meta/audience";
+import { fetchMetaRecentContent, fetchMetaRecentStories } from "@/lib/meta/content";
 import {
   fetchMetaInsightsForWindow,
   transformMetaInsightsWindow,
 } from "@/lib/meta/insights";
-import { fetchMetaRecentContent } from "@/lib/meta/content";
 import { comparePercent, formatCompactNumber, formatPercent } from "@/lib/insights/comparisons";
 import { getMetricLabel } from "@/lib/insights/metric-labels";
 import {
@@ -78,7 +78,7 @@ const emptyAudience: {
 };
 
 export async function getLiveDashboardClient(): Promise<ClientDashboardRecord> {
-  const [accountPages, last7Response, previous7Response, last30Response, previous30Response, recentContent, audienceSummary] =
+  const [accountPages, last7Response, previous7Response, last30Response, previous30Response, recentContent, recentStories, audienceSummary] =
     await Promise.all([
       fetchMetaPagesWithInstagramAccounts(),
       fetchMetaInsightsForWindow(7),
@@ -86,6 +86,7 @@ export async function getLiveDashboardClient(): Promise<ClientDashboardRecord> {
       fetchMetaInsightsForWindow(30),
       fetchMetaInsightsForWindow(30, 30),
       fetchMetaRecentContent(6),
+      fetchMetaRecentStories().catch(() => []),
       fetchMetaAudienceSummary().catch(() => emptyAudience),
     ]);
 
@@ -136,6 +137,10 @@ export async function getLiveDashboardClient(): Promise<ClientDashboardRecord> {
     contentPerformance: {
       "7d": buildContentPerformance(recentContent),
       "30d": buildContentPerformance(recentContent),
+    },
+    mediaGallery: {
+      reels: recentContent,
+      stories: recentStories,
     },
   };
 }

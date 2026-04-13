@@ -1,9 +1,13 @@
-import Link from "next/link";
-import { ArrowRight, LockKeyhole } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { redirect } from "next/navigation";
+import { AdminLoginForm } from "@/components/auth/admin-login-form";
 import { Panel } from "@/components/ui/panel";
+import { isAdminAuthenticated } from "@/lib/auth/admin";
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  if (await isAdminAuthenticated()) {
+    redirect("/dashboard");
+  }
+
   return (
     <main className="grid min-h-screen place-items-center px-6 py-12">
       <div className="grid-pattern absolute inset-0 -z-10 opacity-60" />
@@ -17,40 +21,15 @@ export default function LoginPage() {
             Veganewunder Insights
           </h1>
           <p className="text-sm leading-6 text-stone">
-            Login fuer den internen Bereich. Supabase Auth ist als produktionsreifer
-            Anschluss vorbereitet.
+            Login fuer den internen Admin Bereich. Nur nach erfolgreicher Anmeldung
+            sind Dashboard, Kundenverwaltung und Share Links verfuegbar.
           </p>
         </div>
 
-        <div className="space-y-4">
-          <label className="block space-y-2">
-            <span className="text-sm font-medium text-ink">E Mail</span>
-            <input
-              type="email"
-              defaultValue="admin@veganewunder.de"
-              className="w-full rounded-2xl border border-line bg-white/80 px-4 py-3 text-sm outline-none transition focus:border-ink"
-            />
-          </label>
-          <label className="block space-y-2">
-            <span className="text-sm font-medium text-ink">Passwort</span>
-            <input
-              type="password"
-              defaultValue="demo-passwort"
-              className="w-full rounded-2xl border border-line bg-white/80 px-4 py-3 text-sm outline-none transition focus:border-ink"
-            />
-          </label>
-        </div>
-
-        <Button asChild className="w-full justify-center">
-          <Link href="/dashboard">
-            <LockKeyhole className="size-4" />
-            Zum Dashboard
-            <ArrowRight className="size-4" />
-          </Link>
-        </Button>
+        <AdminLoginForm />
 
         <p className="text-xs leading-5 text-stone">
-          OAuth und Session Handling werden spaeter mit Supabase Auth verbunden.
+          Zugang nur fuer das Veganewunder Team.
         </p>
       </Panel>
     </main>

@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { BarChart3, RefreshCcw, Send } from "lucide-react";
+import { BarChart3, Send } from "lucide-react";
+import { AdminActions } from "@/components/dashboard/admin-actions";
 import { Button } from "@/components/ui/button";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
@@ -17,14 +18,11 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             <BarChart3 className="size-3.5" />
             Gecachte Plattformdaten
           </div>
-          <Button type="button">
-            <RefreshCcw className="size-4" />
-            Sync
-          </Button>
+          <AdminActions />
           <Button asChild variant="secondary">
-            <Link href="/share/kf93share">
+            <Link href="/dashboard">
               <Send className="size-4" />
-              Teilen
+              Share Links
             </Link>
           </Button>
         </div>

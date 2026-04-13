@@ -1,5 +1,17 @@
 import { AudienceBreakdownItem } from "@/types/insights";
 
+function toFlagEmoji(input: string) {
+  const code = input.trim().toUpperCase();
+
+  if (!/^[A-Z]{2}$/.test(code)) {
+    return null;
+  }
+
+  return String.fromCodePoint(
+    ...[...code].map((char) => 127397 + char.charCodeAt(0)),
+  );
+}
+
 export function AudienceBars({ items }: { items: AudienceBreakdownItem[] }) {
   const max = Math.max(...items.map((item) => item.value), 1);
 
@@ -7,7 +19,10 @@ export function AudienceBars({ items }: { items: AudienceBreakdownItem[] }) {
     <div className="mt-6 space-y-3">
       {items.map((item) => (
         <div key={item.key} className="flex items-center gap-3">
-          <span className="w-24 shrink-0 text-sm text-ink">{item.label}</span>
+          <span className="flex w-32 shrink-0 items-center gap-2 text-sm text-ink">
+            {toFlagEmoji(item.label) ? <span>{toFlagEmoji(item.label)}</span> : null}
+            <span>{item.label}</span>
+          </span>
           <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-100">
             <div
               className="h-full rounded-full bg-ink"

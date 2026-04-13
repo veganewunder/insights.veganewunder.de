@@ -48,6 +48,12 @@ Erwartete Supabase Keys fuer den serverseitigen Cache:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
+Erwartete Admin Keys fuer den internen Login:
+
+- `ADMIN_EMAIL`
+- `ADMIN_PASSWORD`
+- `ADMIN_SESSION_SECRET`
+
 Zum lokalen Neustart:
 
 ```bash
@@ -65,6 +71,39 @@ Fuer den ersten Datenimport:
 - `supabase/schema.sql` in Supabase ausfuehren
 - danach lokal `http://localhost:3000/api/sync` aufrufen
 - erst danach liest das Dashboard bevorzugt aus Supabase statt direkt aus dem Live-Fetch
+
+Wenn `share_links` bereits vor der Rechteverwaltung angelegt wurde, fuehre zusaetzlich dieses SQL aus:
+
+```sql
+alter table public.share_links
+add column if not exists visible_sections_json jsonb not null default '[]'::jsonb;
+```
+
+Wenn dein bestehendes Projekt bereits vor der Media Galerie aufgesetzt wurde, fuehre zusaetzlich dieses SQL aus:
+
+```sql
+create table if not exists public.media_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  media_id text not null,
+  media_kind text not null check (media_kind in ('reel', 'story')),
+  title text not null,
+  caption text,
+  platform_label text not null,
+  media_type_label text not null,
+  media_url text,
+  permalink text,
+  published_at timestamptz,
+  like_count integer not null default 0,
+  comment_count integer not null default 0,
+  sort_order integer not null default 0,
+  fetched_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_media_snapshots_account_kind
+  on public.media_snapshots (account_id, media_kind, sort_order);
+```
 
 ## Wichtige Ordner
 

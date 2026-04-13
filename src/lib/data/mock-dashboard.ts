@@ -184,6 +184,10 @@ export const clients: ClientDashboardRecord[] = [
         },
       ]),
     },
+    mediaGallery: {
+      reels: [],
+      stories: [],
+    },
   },
   {
     id: "client_2",
@@ -300,6 +304,10 @@ export const clients: ClientDashboardRecord[] = [
           changeLabel: "+8%",
         },
       ]),
+    },
+    mediaGallery: {
+      reels: [],
+      stories: [],
     },
   },
   {
@@ -421,6 +429,10 @@ export const clients: ClientDashboardRecord[] = [
           changeLabel: "+9%",
         },
       ]),
+    },
+    mediaGallery: {
+      reels: [],
+      stories: [],
     },
   },
 ];

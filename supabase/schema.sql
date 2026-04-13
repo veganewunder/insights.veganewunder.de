@@ -77,10 +77,30 @@ create table if not exists public.content_snapshots (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.media_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  media_id text not null,
+  media_kind text not null check (media_kind in ('reel', 'story')),
+  title text not null,
+  caption text,
+  platform_label text not null,
+  media_type_label text not null,
+  media_url text,
+  permalink text,
+  published_at timestamptz,
+  like_count integer not null default 0,
+  comment_count integer not null default 0,
+  sort_order integer not null default 0,
+  fetched_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.share_links (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null references public.clients(id) on delete cascade,
   token text not null unique,
+  visible_sections_json jsonb not null default '[]'::jsonb,
   password_hash_nullable text,
   expires_at_nullable timestamptz,
   is_active boolean not null default true,
@@ -95,6 +115,9 @@ create index if not exists idx_audience_breakdowns_account_type_dates
 
 create index if not exists idx_content_snapshots_account_period
   on public.content_snapshots (account_id, period_key, sort_order);
+
+create index if not exists idx_media_snapshots_account_kind
+  on public.media_snapshots (account_id, media_kind, sort_order);
 
 create index if not exists idx_share_links_client_active
   on public.share_links (client_id, is_active);
