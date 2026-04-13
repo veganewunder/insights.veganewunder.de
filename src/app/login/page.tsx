@@ -3,10 +3,19 @@ import { AdminLoginForm } from "@/components/auth/admin-login-form";
 import { Panel } from "@/components/ui/panel";
 import { isAdminAuthenticated } from "@/lib/auth/admin";
 
-export default async function LoginPage() {
+type LoginPageProps = {
+  searchParams?: Promise<{
+    next?: string;
+  }>;
+};
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
   if (await isAdminAuthenticated()) {
     redirect("/dashboard");
   }
+
+  const resolvedSearchParams = await searchParams;
+  const nextPath = resolvedSearchParams?.next || "/dashboard";
 
   return (
     <main className="grid min-h-screen place-items-center px-6 py-12">
@@ -26,7 +35,7 @@ export default async function LoginPage() {
           </p>
         </div>
 
-        <AdminLoginForm />
+        <AdminLoginForm nextPath={nextPath} />
 
         <p className="text-xs leading-5 text-stone">
           Zugang nur fuer das Veganewunder Team.

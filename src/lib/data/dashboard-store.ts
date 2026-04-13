@@ -110,6 +110,47 @@ function buildContentRows(
   );
 }
 
+function stripInvalidUnicode(value: string) {
+  let sanitized = "";
+
+  for (let index = 0; index < value.length; index += 1) {
+    const current = value.charCodeAt(index);
+
+    if (current >= 0xd800 && current <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        sanitized += value[index] + value[index + 1];
+        index += 1;
+      }
+
+      continue;
+    }
+
+    if (current >= 0xdc00 && current <= 0xdfff) {
+      continue;
+    }
+
+    sanitized += value[index];
+  }
+
+  return sanitized;
+}
+
+function normalizeText(value: string | null | undefined, fallback = "") {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  const sanitized = stripInvalidUnicode(value).replace(/\u0000/g, "").trim();
+  return sanitized || fallback;
+}
+
+function normalizeNullableText(value: string | null | undefined) {
+  const sanitized = normalizeText(value);
+  return sanitized || null;
+}
+
 function buildMediaRows(
   reels: MetaContentItem[],
   stories: MetaContentItem[],
@@ -122,12 +163,12 @@ function buildMediaRows(
       account_id: accountId,
       media_id: item.id,
       media_kind: "reel" as const,
-      title: item.title,
-      caption: item.caption,
-      platform_label: item.platformLabel,
-      media_type_label: item.mediaTypeLabel,
-      media_url: item.mediaUrl,
-      permalink: item.permalink,
+      title: normalizeText(item.title, "Ohne Titel"),
+      caption: normalizeText(item.caption),
+      platform_label: normalizeText(item.platformLabel, "Instagram"),
+      media_type_label: normalizeText(item.mediaTypeLabel, "Reel"),
+      media_url: normalizeNullableText(item.mediaUrl),
+      permalink: normalizeNullableText(item.permalink),
       published_at: item.publishedAt,
       like_count: item.likeCount,
       comment_count: item.commentCount,
@@ -140,12 +181,12 @@ function buildMediaRows(
       account_id: accountId,
       media_id: item.id,
       media_kind: "story" as const,
-      title: item.title,
-      caption: item.caption,
-      platform_label: item.platformLabel,
-      media_type_label: item.mediaTypeLabel,
-      media_url: item.mediaUrl,
-      permalink: item.permalink,
+      title: normalizeText(item.title, "Ohne Titel"),
+      caption: normalizeText(item.caption),
+      platform_label: normalizeText(item.platformLabel, "Instagram"),
+      media_type_label: normalizeText(item.mediaTypeLabel, "Story"),
+      media_url: normalizeNullableText(item.mediaUrl),
+      permalink: normalizeNullableText(item.permalink),
       published_at: item.publishedAt,
       like_count: item.likeCount,
       comment_count: item.commentCount,
@@ -612,7 +653,14 @@ export async function syncLiveDashboardToSupabase() {
 
   const snapshotRows = buildSnapshotRows(client, account.id, fetchedAt);
   const audienceRows = buildAudienceRows(client, account.id, fetchedAt);
-  const contentRows = buildContentRows(client, account.id, fetchedAt);
+  const contentRows = buildContentRows(client, account.id, fetchedAt).map((row) => ({
+    ...row,
+    title: normalizeText(row.title, "Ohne Titel"),
+    platform_label: normalizeText(row.platform_label, "Instagram"),
+    secondary_label: normalizeText(row.secondary_label, "Keine Zusatzinfo"),
+    primary_value: normalizeText(row.primary_value, "0"),
+    change_label: normalizeText(row.change_label, "Keine Veraenderung"),
+  }));
   const mediaRows = buildMediaRows(reels, stories, account.id, fetchedAt);
 
   const insertSnapshots = await supabase.from("insight_snapshots").insert(snapshotRows);
@@ -630,14 +678,24 @@ export async function syncLiveDashboardToSupabase() {
   if (contentRows.length > 0) {
     const insertContent = await supabase.from("content_snapshots").insert(contentRows);
     if (insertContent.error) {
-      console.error("content_snapshots_sync_warning", insertContent.error.message);
+      console.error("content_snapshots_sync_warning", {
+        message: insertContent.error.message,
+        code: insertContent.error.code,
+        details: insertContent.error.details,
+        hint: insertContent.error.hint,
+      });
     }
   }
 
   if (mediaRows.length > 0) {
     const insertMedia = await supabase.from("media_snapshots").insert(mediaRows);
     if (insertMedia.error) {
-      console.error("media_snapshots_sync_warning", insertMedia.error.message);
+      console.error("media_snapshots_sync_warning", {
+        message: insertMedia.error.message,
+        code: insertMedia.error.code,
+        details: insertMedia.error.details,
+        hint: insertMedia.error.hint,
+      });
     }
   }
 

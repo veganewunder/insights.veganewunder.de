@@ -1,13 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { ArrowRight, LockKeyhole } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export function AdminLoginForm() {
+type AdminLoginFormProps = {
+  nextPath?: string;
+};
+
+export function AdminLoginForm({ nextPath = "/dashboard" }: AdminLoginFormProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -32,8 +35,7 @@ export function AdminLoginForm() {
         return;
       }
 
-      const next = searchParams.get("next") || "/dashboard";
-      router.push(next);
+      router.push(nextPath);
       router.refresh();
     } finally {
       setPending(false);

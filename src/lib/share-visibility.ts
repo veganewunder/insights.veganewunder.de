@@ -7,12 +7,13 @@ export const DEFAULT_SHARE_VISIBILITY: ShareVisibilityKey[] = [
   "audience_countries",
   "audience_cities",
   "audience_age_groups",
+  "audience_gender",
   "timeline",
   "content_performance",
   "media_gallery",
 ];
 
-const LEGACY_SHARE_VISIBILITY: ShareVisibilityKey[] = [
+const LEGACY_SHARE_VISIBILITY_V1: ShareVisibilityKey[] = [
   "metric_reach",
   "metric_impressions",
   "metric_profile_views",
@@ -21,6 +22,18 @@ const LEGACY_SHARE_VISIBILITY: ShareVisibilityKey[] = [
   "audience_age_groups",
   "timeline",
   "content_performance",
+];
+
+const LEGACY_SHARE_VISIBILITY_V2: ShareVisibilityKey[] = [
+  "metric_reach",
+  "metric_impressions",
+  "metric_profile_views",
+  "audience_countries",
+  "audience_cities",
+  "audience_age_groups",
+  "timeline",
+  "content_performance",
+  "media_gallery",
 ];
 
 export const SHARE_VISIBILITY_OPTIONS: Array<{
@@ -74,12 +87,20 @@ export function sanitizeShareVisibility(input: unknown): ShareVisibilityKey[] {
     return [...DEFAULT_SHARE_VISIBILITY];
   }
 
-  const legacyMatch =
-    filtered.length === LEGACY_SHARE_VISIBILITY.length &&
-    LEGACY_SHARE_VISIBILITY.every((key) => filtered.includes(key));
+  const matchesLegacyV1 =
+    filtered.length === LEGACY_SHARE_VISIBILITY_V1.length &&
+    LEGACY_SHARE_VISIBILITY_V1.every((key) => filtered.includes(key));
 
-  if (legacyMatch && !filtered.includes("media_gallery")) {
-    return [...filtered, "media_gallery"];
+  if (matchesLegacyV1) {
+    return [...filtered, "audience_gender", "media_gallery"];
+  }
+
+  const matchesLegacyV2 =
+    filtered.length === LEGACY_SHARE_VISIBILITY_V2.length &&
+    LEGACY_SHARE_VISIBILITY_V2.every((key) => filtered.includes(key));
+
+  if (matchesLegacyV2) {
+    return [...filtered, "audience_gender"];
   }
 
   return filtered;
