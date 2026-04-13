@@ -1,0 +1,616 @@
+import { PostgrestError } from "@supabase/supabase-js";
+import { fetchLiveDashboardClient } from "@/lib/data/live-dashboard";
+import { syncActiveStoriesToSupabase } from "@/lib/data/story-archive";
+import { comparePercent, formatCompactNumber, formatPercent } from "@/lib/insights/comparisons";
+import { getMetricLabel } from "@/lib/insights/metric-labels";
+import { formatDateTime } from "@/lib/insights/formatters";
+import { isSupabaseServerConfigured } from "@/lib/env";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  AudienceBreakdownItem,
+  ClientDashboardRecord,
+  ContentPerformanceItem,
+  DatabaseTables,
+  KpiCardRecord,
+  MetricKey,
+  RangeKey,
+} from "@/types/insights";
+
+type AccountRow = DatabaseTables["accounts"];
+type ClientRow = DatabaseTables["clients"];
+type SnapshotRow = DatabaseTables["insight_snapshots"];
+type AudienceRow = DatabaseTables["audience_breakdowns"];
+type ShareLinkRow = DatabaseTables["share_links"];
+type ContentRow = DatabaseTables["content_snapshots"];
+
+const LIVE_SHARE_TOKEN = "live-meta";
+const METRIC_DISPLAY_ORDER: MetricKey[] = [
+  "reach",
+  "impressions",
+  "views",
+  "story_views",
+  "profile_views",
+  "clicks",
+  "watch_time",
+  "avg_view_duration",
+  "subscribers",
+  "followers",
+  "engagement_rate",
+];
+
+function buildDateRange(periodKey: RangeKey) {
+  const days = periodKey === "7d" ? 7 : 30;
+  const today = new Date();
+  const endDate = new Date(
+    Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()),
+  );
+  const startDate = new Date(endDate);
+  startDate.setUTCDate(startDate.getUTCDate() - (days - 1));
+
+  return {
+    startDate: startDate.toISOString().slice(0, 10),
+    endDate: endDate.toISOString().slice(0, 10),
+  };
+}
+
+function asObject(value: SnapshotRow["value_json"]) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  return null;
+}
+
+function toNumber(value: unknown) {
+  return typeof value === "number" ? value : 0;
+}
+
+function buildStoredKpiCard(snapshot: SnapshotRow): KpiCardRecord {
+  const value = snapshot.value_numeric ?? 0;
+  const meta = asObject(snapshot.value_json);
+  const previousValue = toNumber(meta?.previous_value);
+  const hasPrevious = previousValue > 0;
+  const changePercent = hasPrevious ? comparePercent(value, previousValue) : 0;
+  const metricKey = snapshot.metric_key as MetricKey;
+
+  return {
+    key: metricKey,
+    label: snapshot.metric_label || getMetricLabel(metricKey),
+    value,
+    previousValue,
+    displayValue: formatCompactNumber(value),
+    changePercent,
+    changeLabel: hasPrevious ? formatPercent(changePercent) : "Noch nicht verfuegbar",
+    platformAvailabilityLabel: "Verfuegbar fuer Instagram",
+  };
+}
+
+function buildContentRows(
+  client: ClientDashboardRecord,
+  accountId: string,
+  fetchedAt: string,
+): DatabaseTables["content_snapshots"][] {
+  return (["7d", "30d"] as const).flatMap((periodKey) =>
+    client.contentPerformance[periodKey].map((item, index) => ({
+      id: crypto.randomUUID(),
+      account_id: accountId,
+      period_key: periodKey,
+      content_id: item.id,
+      title: item.title,
+      platform_label: item.platformLabel,
+      secondary_label: item.secondaryLabel,
+      primary_value: item.primaryValue,
+      change_label: item.changeLabel,
+      sort_order: index,
+      fetched_at: fetchedAt,
+      created_at: fetchedAt,
+    })),
+  );
+}
+
+function buildSnapshotRows(
+  client: ClientDashboardRecord,
+  accountId: string,
+  fetchedAt: string,
+): DatabaseTables["insight_snapshots"][] {
+  return (["7d", "30d"] as const).flatMap((periodKey) => {
+    const { startDate, endDate } = buildDateRange(periodKey);
+
+    return client.metrics[periodKey].map((metric) => ({
+      id: crypto.randomUUID(),
+      account_id: accountId,
+      metric_key: metric.key,
+      metric_label: metric.label,
+      period_key: periodKey,
+      value_numeric: metric.value,
+      value_json: JSON.parse(
+        JSON.stringify({
+          previous_value: metric.previousValue,
+        }),
+      ),
+      start_date: startDate,
+      end_date: endDate,
+      fetched_at: fetchedAt,
+      created_at: fetchedAt,
+    }));
+  });
+}
+
+function buildAudienceRows(
+  client: ClientDashboardRecord,
+  accountId: string,
+  fetchedAt: string,
+): DatabaseTables["audience_breakdowns"][] {
+  const { startDate, endDate } = buildDateRange("30d");
+  const audience = client.audience["30d"];
+
+  const groups: Array<{
+    breakdownType: DatabaseTables["audience_breakdowns"]["breakdown_type"];
+    items: AudienceBreakdownItem[];
+  }> = [
+    { breakdownType: "country", items: audience.countries },
+    { breakdownType: "city", items: audience.cities },
+    { breakdownType: "age", items: audience.ageGroups },
+    { breakdownType: "gender", items: audience.gender },
+  ];
+
+  return groups.flatMap((group) =>
+    group.items.map((item) => ({
+      id: crypto.randomUUID(),
+      account_id: accountId,
+      breakdown_type: group.breakdownType,
+      dimension_key: item.key,
+      dimension_label: item.label,
+      value_numeric: item.value,
+      start_date: startDate,
+      end_date: endDate,
+      fetched_at: fetchedAt,
+    })),
+  );
+}
+
+async function ensureStoredClient(
+  client: ClientDashboardRecord,
+  instagramAccountId: string,
+) {
+  const supabase = createSupabaseAdminClient();
+
+  const { data: account, error: accountError } = await supabase
+    .from("accounts")
+    .upsert(
+      {
+        platform: "instagram",
+        account_name: client.name,
+        platform_account_id: instagramAccountId,
+        external_channel_or_page_id: null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "platform_account_id" },
+    )
+    .select("id, platform, account_name, platform_account_id, external_channel_or_page_id, created_at, updated_at")
+    .single();
+
+  if (accountError || !account) {
+    throw new Error(accountError?.message ?? "Account konnte nicht gespeichert werden");
+  }
+
+  const { data: clientRow, error: clientError } = await supabase
+    .from("clients")
+    .upsert(
+      {
+        slug: client.slug,
+        name: client.name,
+        notes: client.notes,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "slug" },
+    )
+    .select("id, slug, name, notes, created_at, updated_at")
+    .single();
+
+  if (clientError || !clientRow) {
+    throw new Error(clientError?.message ?? "Client konnte nicht gespeichert werden");
+  }
+
+  const { error: linkError } = await supabase.from("client_account_links").upsert(
+    {
+      client_id: clientRow.id,
+      account_id: account.id,
+    },
+    { onConflict: "client_id,account_id" },
+  );
+
+  if (linkError) {
+    throw new Error(linkError.message);
+  }
+
+  const { error: shareError } = await supabase.from("share_links").upsert(
+    {
+      client_id: clientRow.id,
+      token: client.shareToken || LIVE_SHARE_TOKEN,
+      password_hash_nullable: null,
+      expires_at_nullable: null,
+      is_active: true,
+    },
+    { onConflict: "token" },
+  );
+
+  if (shareError) {
+    throw new Error(shareError.message);
+  }
+
+  return {
+    account,
+    client: clientRow,
+  };
+}
+
+function isMissingTable(error: PostgrestError | null) {
+  return error?.code === "42P01";
+}
+
+async function readStoredClientBaseBySlug(slug: string) {
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("clients")
+    .select("id, slug, name, notes, created_at, updated_at")
+    .eq("slug", slug)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingTable(error)) {
+      return null;
+    }
+
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+async function readFirstStoredClientBase() {
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("clients")
+    .select("id, slug, name, notes, created_at, updated_at")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingTable(error)) {
+      return null;
+    }
+
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+async function readStoredClientBaseByToken(token: string) {
+  const supabase = createSupabaseAdminClient();
+  const { data: shareLink, error: shareError } = await supabase
+    .from("share_links")
+    .select("client_id, token, is_active, expires_at_nullable")
+    .eq("token", token)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (shareError) {
+    if (isMissingTable(shareError)) {
+      return null;
+    }
+
+    throw new Error(shareError.message);
+  }
+
+  if (!shareLink) {
+    return null;
+  }
+
+  const { data: clientRow, error: clientError } = await supabase
+    .from("clients")
+    .select("id, slug, name, notes, created_at, updated_at")
+    .eq("id", shareLink.client_id)
+    .maybeSingle();
+
+  if (clientError) {
+    throw new Error(clientError.message);
+  }
+
+  return clientRow;
+}
+
+function buildTimelineFromContent(items: ContentPerformanceItem[]) {
+  return items.slice(0, 6).map((item, index) => {
+    const numeric = Number(item.primaryValue.replace(/[^\d]/g, "")) || 0;
+
+    return {
+      label: `P${index + 1}`,
+      value: numeric,
+      displayValue: formatCompactNumber(numeric),
+    };
+  });
+}
+
+function toAudienceItems(rows: AudienceRow[], breakdownType: AudienceRow["breakdown_type"]) {
+  return rows
+    .filter((row) => row.breakdown_type === breakdownType)
+    .sort((left, right) => right.value_numeric - left.value_numeric)
+    .map((row) => ({
+      key: row.dimension_key,
+      label: row.dimension_label,
+      value: row.value_numeric,
+    }));
+}
+
+async function hydrateStoredClient(clientRow: ClientRow): Promise<ClientDashboardRecord | null> {
+  const supabase = createSupabaseAdminClient();
+
+  const { data: linkRows, error: linkError } = await supabase
+    .from("client_account_links")
+    .select("account_id")
+    .eq("client_id", clientRow.id)
+    .limit(1);
+
+  if (linkError) {
+    throw new Error(linkError.message);
+  }
+
+  const accountId = linkRows?.[0]?.account_id;
+
+  if (!accountId) {
+    return null;
+  }
+
+  const [
+    accountResult,
+    snapshotResult,
+    audienceResult,
+    contentResult,
+    shareResult,
+  ] = await Promise.all([
+    supabase
+      .from("accounts")
+      .select("id, platform, account_name, platform_account_id, external_channel_or_page_id, created_at, updated_at")
+      .eq("id", accountId)
+      .single(),
+    supabase
+      .from("insight_snapshots")
+      .select("id, account_id, metric_key, metric_label, period_key, value_numeric, value_json, start_date, end_date, fetched_at, created_at")
+      .eq("account_id", accountId),
+    supabase
+      .from("audience_breakdowns")
+      .select("id, account_id, breakdown_type, dimension_key, dimension_label, value_numeric, start_date, end_date, fetched_at")
+      .eq("account_id", accountId),
+    supabase
+      .from("content_snapshots")
+      .select("id, account_id, period_key, content_id, title, platform_label, secondary_label, primary_value, change_label, sort_order, fetched_at, created_at")
+      .eq("account_id", accountId),
+    supabase
+      .from("share_links")
+      .select("id, client_id, token, password_hash_nullable, expires_at_nullable, is_active, created_at")
+      .eq("client_id", clientRow.id)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  if (accountResult.error) throw new Error(accountResult.error.message);
+  if (snapshotResult.error) throw new Error(snapshotResult.error.message);
+  if (audienceResult.error && !isMissingTable(audienceResult.error)) {
+    throw new Error(audienceResult.error.message);
+  }
+  if (contentResult.error && !isMissingTable(contentResult.error)) {
+    throw new Error(contentResult.error.message);
+  }
+  if (shareResult.error && !isMissingTable(shareResult.error)) {
+    throw new Error(shareResult.error.message);
+  }
+
+  const account = accountResult.data as AccountRow;
+  const snapshots = (snapshotResult.data ?? []) as SnapshotRow[];
+  const audienceRows = (audienceResult.data ?? []) as AudienceRow[];
+  const contentRows = (contentResult.data ?? []) as ContentRow[];
+  const shareLink = (shareResult.data ?? null) as ShareLinkRow | null;
+
+  if (!account || snapshots.length === 0) {
+    return null;
+  }
+
+  const metricsByPeriod: Record<RangeKey, KpiCardRecord[]> = {
+    "7d": [],
+    "30d": [],
+  };
+
+  for (const periodKey of ["7d", "30d"] as const) {
+    const periodRows = snapshots.filter((row) => row.period_key === periodKey);
+    metricsByPeriod[periodKey] = METRIC_DISPLAY_ORDER
+      .map((metricKey) => periodRows.find((row) => row.metric_key === metricKey))
+      .filter((row): row is SnapshotRow => Boolean(row))
+      .map(buildStoredKpiCard);
+  }
+
+  const contentByPeriod: Record<RangeKey, ContentPerformanceItem[]> = {
+    "7d": [],
+    "30d": [],
+  };
+
+  for (const periodKey of ["7d", "30d"] as const) {
+    contentByPeriod[periodKey] = contentRows
+      .filter((row) => row.period_key === periodKey)
+      .sort((left, right) => left.sort_order - right.sort_order)
+      .map((row) => ({
+        id: row.content_id,
+        title: row.title,
+        platformLabel: row.platform_label,
+        secondaryLabel: row.secondary_label,
+        primaryValue: row.primary_value,
+        changeLabel: row.change_label,
+      }));
+  }
+
+  const fetchedAtCandidates = [
+    ...snapshots.map((row) => row.fetched_at),
+    ...audienceRows.map((row) => row.fetched_at),
+    ...contentRows.map((row) => row.fetched_at),
+  ]
+    .filter(Boolean)
+    .map((value) => new Date(value).getTime())
+    .filter((value) => Number.isFinite(value));
+
+  const lastSyncedAt = fetchedAtCandidates.length > 0
+    ? new Date(Math.max(...fetchedAtCandidates))
+    : new Date();
+
+  const audience = {
+    countries: toAudienceItems(audienceRows, "country"),
+    cities: toAudienceItems(audienceRows, "city"),
+    ageGroups: toAudienceItems(audienceRows, "age"),
+    gender: toAudienceItems(audienceRows, "gender"),
+  };
+
+  return {
+    id: clientRow.id,
+    slug: clientRow.slug,
+    name: clientRow.name,
+    notes: clientRow.notes ?? "",
+    accountSummary: `${account.account_name} / Instagram ${account.platform_account_id}`,
+    shareToken: shareLink?.token ?? LIVE_SHARE_TOKEN,
+    shareExpiresLabel: shareLink?.expires_at_nullable
+      ? formatDateTime(new Date(shareLink.expires_at_nullable))
+      : "Unbegrenzt",
+    lastSyncedAt,
+    platforms: [account.platform],
+    metrics: metricsByPeriod,
+    audience: {
+      "7d": audience,
+      "30d": audience,
+    },
+    timeline: {
+      "7d": buildTimelineFromContent(contentByPeriod["7d"]),
+      "30d": buildTimelineFromContent(contentByPeriod["30d"]),
+    },
+    contentPerformance: contentByPeriod,
+  };
+}
+
+export async function syncLiveDashboardToSupabase() {
+  if (!isSupabaseServerConfigured()) {
+    throw new Error("Supabase ist serverseitig noch nicht konfiguriert");
+  }
+
+  const client = await fetchLiveDashboardClient();
+  const instagramAccountId = process.env.META_INSTAGRAM_ACCOUNT_ID;
+
+  if (!instagramAccountId) {
+    throw new Error("META_INSTAGRAM_ACCOUNT_ID fehlt");
+  }
+
+  const { account } = await ensureStoredClient(client, instagramAccountId);
+  const fetchedAt = new Date().toISOString();
+  const supabase = createSupabaseAdminClient();
+
+  const [deleteSnapshots, deleteAudience, deleteContent] = await Promise.all([
+    supabase.from("insight_snapshots").delete().eq("account_id", account.id),
+    supabase.from("audience_breakdowns").delete().eq("account_id", account.id),
+    supabase.from("content_snapshots").delete().eq("account_id", account.id),
+  ]);
+
+  for (const result of [deleteSnapshots, deleteAudience, deleteContent]) {
+    if (result.error && !isMissingTable(result.error)) {
+      throw new Error(result.error.message);
+    }
+  }
+
+  const snapshotRows = buildSnapshotRows(client, account.id, fetchedAt);
+  const audienceRows = buildAudienceRows(client, account.id, fetchedAt);
+  const contentRows = buildContentRows(client, account.id, fetchedAt);
+
+  const insertSnapshots = await supabase.from("insight_snapshots").insert(snapshotRows);
+  if (insertSnapshots.error) {
+    throw new Error(`insight_snapshots: ${insertSnapshots.error.message}`);
+  }
+
+  if (audienceRows.length > 0) {
+    const insertAudience = await supabase.from("audience_breakdowns").insert(audienceRows);
+    if (insertAudience.error) {
+      throw new Error(`audience_breakdowns: ${insertAudience.error.message}`);
+    }
+  }
+
+  if (contentRows.length > 0) {
+    const insertContent = await supabase.from("content_snapshots").insert(contentRows);
+    if (insertContent.error) {
+      console.error("content_snapshots_sync_warning", insertContent.error.message);
+    }
+  }
+
+  const storyCount = await syncActiveStoriesToSupabase(account.id).catch(() => 0);
+
+  return {
+    accountId: account.id,
+    snapshotCount: snapshotRows.length,
+    audienceCount: audienceRows.length,
+    contentCount: contentRows.length,
+    storyCount,
+    syncedAt: fetchedAt,
+  };
+}
+
+export async function getDashboardClient() {
+  if (!isSupabaseServerConfigured()) {
+    return fetchLiveDashboardClient();
+  }
+
+  const storedClient = await readFirstStoredClientBase();
+
+  if (storedClient) {
+    const hydrated = await hydrateStoredClient(storedClient);
+    if (hydrated) {
+      return hydrated;
+    }
+  }
+
+  return fetchLiveDashboardClient();
+}
+
+export async function getDashboardClientBySlug(slug: string) {
+  if (!isSupabaseServerConfigured()) {
+    const liveClient = await fetchLiveDashboardClient();
+    return liveClient.slug === slug ? liveClient : null;
+  }
+
+  const storedClient = await readStoredClientBaseBySlug(slug);
+
+  if (storedClient) {
+    const hydrated = await hydrateStoredClient(storedClient);
+    if (hydrated) {
+      return hydrated;
+    }
+  }
+
+  const liveClient = await fetchLiveDashboardClient();
+  return liveClient.slug === slug ? liveClient : null;
+}
+
+export async function getDashboardClientByShareToken(token: string) {
+  if (!isSupabaseServerConfigured()) {
+    const liveClient = await fetchLiveDashboardClient();
+    return liveClient.shareToken === token ? liveClient : null;
+  }
+
+  const storedClient = await readStoredClientBaseByToken(token);
+
+  if (storedClient) {
+    const hydrated = await hydrateStoredClient(storedClient);
+    if (hydrated) {
+      return hydrated;
+    }
+  }
+
+  const liveClient = await fetchLiveDashboardClient();
+  return liveClient.shareToken === token ? liveClient : null;
+}
