@@ -86,6 +86,7 @@ export type MetaContentItem = {
   platformLabel: string;
   mediaTypeLabel: string;
   mediaUrl: string | null;
+  archivedMediaUrl?: string | null;
   permalink: string | null;
   publishedAt: string | null;
   likeCount: number;
@@ -212,6 +213,7 @@ export type DatabaseTables = {
     platform_label: string;
     media_type_label: string;
     media_url: string | null;
+    archived_media_url: string | null;
     permalink: string | null;
     published_at: string | null;
     like_count: number;
@@ -226,6 +228,7 @@ export type DatabaseTables = {
     client_id: string;
     token: string;
     link_name_nullable: string | null;
+    recipient_name_nullable: string | null;
     visible_sections_json: ShareVisibilityKey[] | null;
     password_hash_nullable: string | null;
     expires_at_nullable: string | null;

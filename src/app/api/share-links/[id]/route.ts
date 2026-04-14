@@ -3,6 +3,7 @@ import {
   deleteShareLink,
   setShareLinkActive,
   updateShareLinkName,
+  updateShareLinkRecipientName,
   updateShareLinkVisibility,
 } from "@/lib/data/share-links";
 import { sanitizeShareVisibility } from "@/lib/share-visibility";
@@ -16,6 +17,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       is_active?: boolean;
       visibleSections?: unknown;
       linkName?: string | null;
+      recipientName?: string | null;
     };
 
     if (typeof body.is_active === "boolean") {
@@ -25,6 +27,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     if ("linkName" in body) {
       const link = await updateShareLinkName(id, body.linkName ?? null);
+      return NextResponse.json(link);
+    }
+
+    if ("recipientName" in body) {
+      const link = await updateShareLinkRecipientName(id, body.recipientName ?? null);
       return NextResponse.json(link);
     }
 

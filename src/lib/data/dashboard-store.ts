@@ -5,8 +5,10 @@ import { buildContentInsights, getDefaultContentSlice } from "@/lib/insights/con
 import { getMetricLabel } from "@/lib/insights/metric-labels";
 import { formatDateTime } from "@/lib/insights/formatters";
 import { fetchMetaRecentContent, fetchMetaRecentStories } from "@/lib/meta/content";
+import { syncActiveStoriesToSupabase } from "@/lib/data/story-archive";
 import { isSupabaseServerConfigured } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { archiveStoryAssets } from "@/lib/storage/story-assets";
 import {
   AudienceBreakdownItem,
   ClientDashboardRecord,
@@ -189,6 +191,10 @@ function buildMediaRows(
       platform_label: normalizeText(item.platformLabel, "Instagram"),
       media_type_label: normalizeText(item.mediaTypeLabel, item.contentTypeLabel),
       media_url: normalizeNullableText(item.mediaUrl),
+      archived_media_url:
+        item.contentType === "stories"
+          ? normalizeNullableText(item.archivedMediaUrl)
+          : null,
       permalink: normalizeNullableText(item.permalink),
       published_at: item.publishedAt,
       like_count: item.likeCount,
@@ -198,6 +204,33 @@ function buildMediaRows(
       fetched_at: fetchedAt,
       created_at: fetchedAt,
     }));
+}
+
+function getStoryRetentionThreshold(referenceDateIso: string) {
+  const threshold = new Date(referenceDateIso);
+  threshold.setUTCDate(threshold.getUTCDate() - 30);
+  return threshold.toISOString();
+}
+
+function mergeStoryItems(
+  retainedStories: MetaContentItem[],
+  currentStories: MetaContentItem[],
+) {
+  const byId = new Map<string, MetaContentItem>();
+
+  for (const story of retainedStories) {
+    byId.set(story.id, story);
+  }
+
+  for (const story of currentStories) {
+    byId.set(story.id, story);
+  }
+
+  return [...byId.values()].sort((left, right) => {
+    const leftTime = left.publishedAt ? new Date(left.publishedAt).getTime() : 0;
+    const rightTime = right.publishedAt ? new Date(right.publishedAt).getTime() : 0;
+    return rightTime - leftTime;
+  });
 }
 
 function buildSnapshotRows(
@@ -341,6 +374,10 @@ function isMissingTable(error: PostgrestError | null) {
   return error?.code === "42P01" || error?.code === "PGRST205";
 }
 
+function isMissingColumn(error: PostgrestError | null, column: string) {
+  return error?.message?.includes(column) ?? false;
+}
+
 async function readStoredClientBaseBySlug(slug: string) {
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
@@ -458,7 +495,8 @@ function toMetaContentItems(rows: MediaRow[], contentType: ContentType) {
       caption: row.caption,
       platformLabel: row.platform_label,
       mediaTypeLabel: row.media_type_label,
-      mediaUrl: row.media_url,
+      mediaUrl: row.archived_media_url ?? row.media_url,
+      archivedMediaUrl: row.archived_media_url,
       permalink: row.permalink,
       publishedAt: row.published_at,
       likeCount: row.like_count,
@@ -661,6 +699,24 @@ export async function syncLiveDashboardToSupabase() {
     fetchMetaRecentContent(30).catch(() => []),
     fetchMetaRecentStories(12).catch(() => []),
   ]);
+  const storyRetentionThreshold = getStoryRetentionThreshold(fetchedAt);
+  const retainedStoryResult = await supabase
+    .from("media_snapshots")
+    .select("*")
+    .eq("account_id", account.id)
+    .eq("media_kind", "story")
+    .gte("published_at", storyRetentionThreshold);
+
+  if (retainedStoryResult.error && !isMissingTable(retainedStoryResult.error)) {
+    throw new Error(retainedStoryResult.error.message);
+  }
+
+  const retainedStoryRows = (retainedStoryResult.data ?? []) as MediaRow[];
+  const retainedStoryItems = toMetaContentItems(retainedStoryRows, "stories");
+  const mergedStoryItems = mergeStoryItems(retainedStoryItems, storyItems);
+  const retainedStoryCount = retainedStoryItems.length;
+  const liveStoryCount = storyItems.length;
+  const mergedStoryCount = mergedStoryItems.length;
 
   const [deleteSnapshots, deleteAudience, deleteContent, deleteMedia] = await Promise.all([
     supabase.from("insight_snapshots").delete().eq("account_id", account.id),
@@ -685,7 +741,12 @@ export async function syncLiveDashboardToSupabase() {
     primary_value: normalizeText(row.primary_value, "0"),
     change_label: normalizeText(row.change_label, "Keine Veraenderung"),
   }));
-  const mediaRows = buildMediaRows([...contentItems, ...storyItems], account.id, fetchedAt);
+  const archivedStoriesResult = await archiveStoryAssets(account.id, mergedStoryItems);
+  const mediaRows = buildMediaRows(
+    [...contentItems, ...archivedStoriesResult.stories],
+    account.id,
+    fetchedAt,
+  );
 
   const insertSnapshots = await supabase.from("insight_snapshots").insert(snapshotRows);
   if (insertSnapshots.error) {
@@ -711,17 +772,42 @@ export async function syncLiveDashboardToSupabase() {
     }
   }
 
+  let mediaInsertFailed = false;
+
   if (mediaRows.length > 0) {
     const insertMedia = await supabase.from("media_snapshots").insert(mediaRows);
     if (insertMedia.error) {
-      console.error("media_snapshots_sync_warning", {
-        message: insertMedia.error.message,
-        code: insertMedia.error.code,
-        details: insertMedia.error.details,
-        hint: insertMedia.error.hint,
-      });
+      if (isMissingColumn(insertMedia.error, "archived_media_url")) {
+        const fallbackRows = mediaRows.map(({ archived_media_url, ...row }) => row);
+        const fallbackInsert = await supabase.from("media_snapshots").insert(fallbackRows);
+
+        if (!fallbackInsert.error) {
+          mediaInsertFailed = false;
+        } else {
+          mediaInsertFailed = true;
+        }
+      } else {
+        mediaInsertFailed = true;
+      }
+
+      if (mediaInsertFailed) {
+        console.error("media_snapshots_sync_warning", {
+          message: insertMedia.error.message,
+          code: insertMedia.error.code,
+          details: insertMedia.error.details,
+          hint: insertMedia.error.hint,
+        });
+      }
     }
   }
+
+  const storyArchiveCount = await syncActiveStoriesToSupabase(account.id).catch((error) => {
+    console.warn(
+      "story_archive_sync_warning",
+      error instanceof Error ? error.message : "Unbekannter Fehler",
+    );
+    return 0;
+  });
 
   return {
     accountId: account.id,
@@ -729,6 +815,12 @@ export async function syncLiveDashboardToSupabase() {
     audienceCount: audienceRows.length,
     contentCount: contentRows.length,
     mediaCount: mediaRows.length,
+    storyArchiveCount,
+    liveStoryCount,
+    retainedStoryCount,
+    mergedStoryCount,
+    archivedStoryAssetCount: archivedStoriesResult.archivedCount,
+    reusedArchivedStoryAssetCount: archivedStoriesResult.reusedArchivedCount,
     syncedAt: fetchedAt,
   };
 }

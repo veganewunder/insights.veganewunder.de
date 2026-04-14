@@ -9,6 +9,7 @@ export async function POST(request: NextRequest) {
       clientId?: string;
       visibleSections?: unknown;
       linkName?: string | null;
+      recipientName?: string | null;
     };
     const clientId = body.clientId ?? await getFirstClientId();
 
@@ -16,11 +17,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Kein Client gefunden" }, { status: 404 });
     }
 
-    await syncLiveDashboardToSupabase();
+    await syncLiveDashboardToSupabase().catch((error) => {
+      console.warn(
+        "share_link_sync_warning",
+        error instanceof Error ? error.message : "Unbekannter Sync-Fehler",
+      );
+    });
 
     const link = await createShareLink(
       clientId,
       body.linkName ?? null,
+      body.recipientName ?? null,
       sanitizeShareVisibility(body.visibleSections),
     );
     return NextResponse.json(link, { status: 201 });

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { AudienceBars } from "@/components/dashboard/audience-bars";
+import { AutoSyncOnView } from "@/components/dashboard/auto-sync-on-view";
 import { AudienceGenderPie } from "@/components/dashboard/audience-gender-pie";
 import { ComparisonGrid } from "@/components/dashboard/comparison-grid";
 import { ClientHeader } from "@/components/dashboard/client-header";
@@ -14,6 +15,7 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { getDashboardClientBySlug } from "@/lib/data/dashboard-store";
 import { CONTENT_TYPE_CONFIG, DEFAULT_CONTENT_TYPE, isContentType } from "@/lib/insights/content-config";
 import { buildAverageMetrics } from "@/lib/insights/reporting";
+import { isNextNotFoundError } from "@/lib/next-errors";
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -48,6 +50,7 @@ export default async function ClientPage({ params, searchParams }: PageProps) {
 
     return (
       <DashboardShell>
+        <AutoSyncOnView />
         <ClientHeader
           client={client}
           activeRange={activeRange}
@@ -161,6 +164,10 @@ export default async function ClientPage({ params, searchParams }: PageProps) {
       </DashboardShell>
     );
   } catch (error) {
+    if (isNextNotFoundError(error)) {
+      throw error;
+    }
+
     const message =
       error instanceof Error ? error.message : "Live Daten konnten nicht geladen werden";
 

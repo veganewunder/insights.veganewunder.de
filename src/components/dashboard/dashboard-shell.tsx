@@ -1,7 +1,5 @@
 import Link from "next/link";
-import { BarChart3, Send } from "lucide-react";
 import { AdminActions } from "@/components/dashboard/admin-actions";
-import { Button } from "@/components/ui/button";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
@@ -21,17 +19,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex items-center gap-2 rounded-lg border border-line bg-panel px-3 py-1.5 text-xs font-medium text-stone shadow-panel">
-            <BarChart3 className="size-3.5" />
-            Gecachte Plattformdaten
-          </div>
           <AdminActions />
-          <Button asChild variant="secondary">
-            <Link href="/dashboard">
-              <Send className="size-4" />
-              Share Links
-            </Link>
-          </Button>
         </div>
       </header>
 

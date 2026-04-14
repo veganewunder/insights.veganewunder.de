@@ -50,12 +50,20 @@ export function ShareLinksManager({ initialLinks, clientId, baseUrl }: Props) {
   const [creating, setCreating] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [editingNameId, setEditingNameId] = useState<string | null>(null);
+  const [editingRecipientId, setEditingRecipientId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openVisibilityId, setOpenVisibilityId] = useState<string | null>(null);
   const [newLinkName, setNewLinkName] = useState("");
+  const [newRecipientName, setNewRecipientName] = useState("");
   const [draftNames, setDraftNames] = useState<Record<string, string>>(
     Object.fromEntries(
       initialLinks.map((link) => [link.id, link.link_name_nullable ?? ""]),
+    ),
+  );
+  const [draftRecipientNames, setDraftRecipientNames] = useState<Record<string, string>>(
+    Object.fromEntries(
+      initialLinks.map((link) => [link.id, link.recipient_name_nullable ?? ""]),
     ),
   );
   const [draftVisibility, setDraftVisibility] = useState<Record<string, ShareVisibilityKey[]>>(
@@ -101,6 +109,7 @@ export function ShareLinksManager({ initialLinks, clientId, baseUrl }: Props) {
         body: JSON.stringify({
           clientId,
           linkName: newLinkName.trim() || null,
+          recipientName: newRecipientName.trim() || null,
           visibleSections: SHARE_VISIBILITY_OPTIONS.map((option) => option.key),
         }),
       });
@@ -115,12 +124,17 @@ export function ShareLinksManager({ initialLinks, clientId, baseUrl }: Props) {
         ...prev,
         [link.id]: link.link_name_nullable ?? "",
       }));
+      setDraftRecipientNames((prev) => ({
+        ...prev,
+        [link.id]: link.recipient_name_nullable ?? "",
+      }));
       setDraftVisibility((prev) => ({
         ...prev,
         [link.id]: link.visible_sections_json,
       }));
       setOpenVisibilityId(link.id);
       setNewLinkName("");
+      setNewRecipientName("");
     } finally {
       setCreating(false);
     }
@@ -148,6 +162,35 @@ export function ShareLinksManager({ initialLinks, clientId, baseUrl }: Props) {
         ...prev,
         [link.id]: updated.link_name_nullable ?? "",
       }));
+      setEditingNameId(null);
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function handleSaveRecipientName(link: ShareLinkRow) {
+    setPendingId(link.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/share-links/${link.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipientName: draftRecipientNames[link.id] ?? "",
+        }),
+      });
+      const payload = await res.json() as ShareLinkRow | { message?: string };
+      if (!res.ok) {
+        setError((payload as { message?: string }).message ?? "Empfängername konnte nicht gespeichert werden");
+        return;
+      }
+      const updated = payload as ShareLinkRow;
+      setLinks((prev) => prev.map((entry) => (entry.id === link.id ? updated : entry)));
+      setDraftRecipientNames((prev) => ({
+        ...prev,
+        [link.id]: updated.recipient_name_nullable ?? "",
+      }));
+      setEditingRecipientId(null);
     } finally {
       setPendingId(null);
     }
@@ -219,42 +262,60 @@ export function ShareLinksManager({ initialLinks, clientId, baseUrl }: Props) {
   }
 
   return (
-    <div className="mt-4 space-y-3">
+    <div className="mt-5 space-y-4">
       {error ? (
-        <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-danger">
+        <div className="rounded-2xl border border-red-100 bg-red-50/90 px-4 py-3 text-sm text-danger shadow-sm">
           {error}
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-3 rounded-2xl border border-line bg-white/70 p-4 md:flex-row md:items-end md:justify-between">
-        <div className="w-full max-w-md">
+      <div className="grid gap-4 rounded-[1.8rem] border border-white/80 bg-[linear-gradient(135deg,_rgba(255,255,255,0.92),_rgba(244,244,245,0.82)_55%,_rgba(233,237,226,0.9)_100%)] p-5 shadow-[0_18px_50px_rgba(24,24,27,0.08)] xl:grid-cols-[1fr_1fr_auto] xl:items-end">
+        <div className="w-full">
           <label htmlFor="new-share-link-name" className="text-sm font-semibold text-ink">
-            Interne Bezeichnung
+            Firma
           </label>
           <p className="mt-1 text-xs leading-5 text-stone">
-            Zum Beispiel: Kaufland April Reporting oder Edeka Agenturfreigabe.
+            Zum Beispiel: Kaufland, Edeka oder REWE.
           </p>
           <input
             id="new-share-link-name"
             type="text"
             value={newLinkName}
             onChange={(event) => setNewLinkName(event.target.value)}
-            placeholder="Link intern benennen"
-            className="mt-3 w-full rounded-xl border border-line bg-panel px-4 py-3 text-sm text-ink outline-none transition focus:border-ink"
+            placeholder="Firma eintragen"
+            className="mt-3 w-full rounded-2xl border border-white/80 bg-white/90 px-4 py-3 text-sm text-ink outline-none transition placeholder:text-stone/70 focus:border-ink"
           />
         </div>
-        <p className="text-sm text-stone">
-          {links.length === 0 ? "Noch keine Links erstellt." : `${links.length} Link${links.length !== 1 ? "s" : ""}`}
-        </p>
-        <button
-          type="button"
-          onClick={handleCreate}
-          disabled={creating}
-          className="inline-flex items-center gap-2 rounded-lg bg-ink px-4 py-2 text-sm font-medium text-white transition-opacity disabled:opacity-60"
-        >
-          <Plus className="size-4" />
-          {creating ? "Sync und Link werden erstellt…" : "Neuen Link erstellen"}
-        </button>
+        <div className="w-full">
+          <label htmlFor="new-share-link-recipient" className="text-sm font-semibold text-ink">
+            Ansprechpartner
+          </label>
+          <p className="mt-1 text-xs leading-5 text-stone">
+            Dieser Name wird direkt im individuellen Link als persönliche Begrüßung angezeigt.
+          </p>
+          <input
+            id="new-share-link-recipient"
+            type="text"
+            value={newRecipientName}
+            onChange={(event) => setNewRecipientName(event.target.value)}
+            placeholder="Name des Empfängers"
+            className="mt-3 w-full rounded-2xl border border-white/80 bg-white/90 px-4 py-3 text-sm text-ink outline-none transition placeholder:text-stone/70 focus:border-ink"
+          />
+        </div>
+        <div className="flex flex-col gap-3 xl:items-end">
+          <p className="text-sm text-stone">
+            {links.length === 0 ? "Noch keine Links erstellt." : `${links.length} Link${links.length !== 1 ? "s" : ""}`}
+          </p>
+          <button
+            type="button"
+            onClick={handleCreate}
+            disabled={creating}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-ink px-5 py-3 text-sm font-medium text-white shadow-lg shadow-black/10 transition hover:translate-y-[-1px] disabled:opacity-60"
+          >
+            <Plus className="size-4" />
+            {creating ? "Sync und Link werden erstellt…" : "Neuen Link erstellen"}
+          </button>
+        </div>
       </div>
 
       {links.map((link) => {
@@ -266,8 +327,10 @@ export function ShareLinksManager({ initialLinks, clientId, baseUrl }: Props) {
         return (
           <div
             key={link.id}
-            className={`rounded-xl border p-4 transition-colors ${
-              link.is_active ? "border-line bg-panel" : "border-line bg-zinc-50 opacity-60"
+            className={`rounded-[1.7rem] border p-5 shadow-[0_14px_40px_rgba(24,24,27,0.06)] transition-colors ${
+              link.is_active
+                ? "border-white/80 bg-[linear-gradient(180deg,_rgba(255,255,255,0.95),_rgba(246,244,239,0.92))]"
+                : "border-line bg-zinc-50 opacity-70"
             }`}
           >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -284,25 +347,125 @@ export function ShareLinksManager({ initialLinks, clientId, baseUrl }: Props) {
                   </span>
                   <span className="text-xs text-stone">{formatDate(link.created_at)}</span>
                 </div>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <input
-                    type="text"
-                    value={draftNames[link.id] ?? ""}
-                    onChange={(event) =>
-                      setDraftNames((prev) => ({ ...prev, [link.id]: event.target.value }))
-                    }
-                    placeholder="Interne Bezeichnung"
-                    className="w-full max-w-sm rounded-xl border border-line bg-panel px-3 py-2 text-sm font-medium text-ink outline-none transition focus:border-ink"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleSaveName(link)}
-                    disabled={isLoading}
-                    className="inline-flex shrink-0 items-center rounded-xl border border-line px-3 py-2 text-xs font-semibold text-ink transition hover:border-ink disabled:opacity-50"
-                  >
-                    Bezeichnung speichern
-                  </button>
+                <div className="rounded-[1.2rem] border border-white/80 bg-white/75 px-4 py-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone">
+                        Firma
+                      </p>
+                      {editingNameId === link.id ? (
+                        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                          <input
+                            type="text"
+                            value={draftNames[link.id] ?? ""}
+                            onChange={(event) =>
+                              setDraftNames((prev) => ({ ...prev, [link.id]: event.target.value }))
+                            }
+                            placeholder="Firma eintragen"
+                            className="w-full max-w-sm rounded-2xl border border-white/80 bg-white/90 px-3 py-2.5 text-sm font-medium text-ink outline-none transition focus:border-ink"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSaveName(link)}
+                            disabled={isLoading}
+                            className="inline-flex shrink-0 items-center rounded-2xl border border-line bg-white/90 px-3 py-2.5 text-xs font-semibold text-ink transition hover:border-ink disabled:opacity-50"
+                          >
+                            Speichern
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDraftNames((prev) => ({
+                                ...prev,
+                                [link.id]: link.link_name_nullable ?? "",
+                              }));
+                              setEditingNameId(null);
+                            }}
+                            className="inline-flex shrink-0 items-center rounded-2xl border border-line bg-white/70 px-3 py-2.5 text-xs font-semibold text-stone transition hover:text-ink"
+                          >
+                            Abbrechen
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="mt-1 truncate text-base font-semibold text-ink">
+                          {link.link_name_nullable ?? "Keine Firma hinterlegt"}
+                        </p>
+                      )}
+                    </div>
+
+                    {editingNameId !== link.id ? (
+                      <button
+                        type="button"
+                        onClick={() => setEditingNameId(link.id)}
+                        className="inline-flex shrink-0 items-center rounded-2xl border border-line bg-white/80 px-3 py-2 text-xs font-semibold text-ink transition hover:border-ink"
+                      >
+                        Bearbeiten
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
+                <div className="rounded-[1.2rem] border border-white/80 bg-white/75 px-4 py-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone">
+                        Ansprechpartner
+                      </p>
+                      {editingRecipientId === link.id ? (
+                        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                          <input
+                            type="text"
+                            value={draftRecipientNames[link.id] ?? ""}
+                            onChange={(event) =>
+                              setDraftRecipientNames((prev) => ({ ...prev, [link.id]: event.target.value }))
+                            }
+                            placeholder="Ansprechpartner eintragen"
+                            className="w-full max-w-sm rounded-2xl border border-white/80 bg-white/90 px-3 py-2.5 text-sm font-medium text-ink outline-none transition focus:border-ink"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSaveRecipientName(link)}
+                            disabled={isLoading}
+                            className="inline-flex shrink-0 items-center rounded-2xl border border-line bg-white/90 px-3 py-2.5 text-xs font-semibold text-ink transition hover:border-ink disabled:opacity-50"
+                          >
+                            Speichern
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDraftRecipientNames((prev) => ({
+                                ...prev,
+                                [link.id]: link.recipient_name_nullable ?? "",
+                              }));
+                              setEditingRecipientId(null);
+                            }}
+                            className="inline-flex shrink-0 items-center rounded-2xl border border-line bg-white/70 px-3 py-2.5 text-xs font-semibold text-stone transition hover:text-ink"
+                          >
+                            Abbrechen
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="mt-1 truncate text-base font-semibold text-ink">
+                          {link.recipient_name_nullable ?? "Kein Ansprechpartner hinterlegt"}
+                        </p>
+                      )}
+                    </div>
+
+                    {editingRecipientId !== link.id ? (
+                      <button
+                        type="button"
+                        onClick={() => setEditingRecipientId(link.id)}
+                        className="inline-flex shrink-0 items-center rounded-2xl border border-line bg-white/80 px-3 py-2 text-xs font-semibold text-ink transition hover:border-ink"
+                      >
+                        Bearbeiten
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+                {draftRecipientNames[link.id]?.trim() ? (
+                  <p className="text-xs leading-5 text-stone">
+                    Vorschau: Hey, {draftRecipientNames[link.id].trim()}, hier findest du unsere aktuellen Insights. Wir freuen uns auf eine mögliche Zusammenarbeit.
+                  </p>
+                ) : null}
                 <Link
                   href={url}
                   target="_blank"
@@ -321,7 +484,7 @@ export function ShareLinksManager({ initialLinks, clientId, baseUrl }: Props) {
                   onClick={() => handleToggle(link)}
                   disabled={isLoading}
                   title={link.is_active ? "Deaktivieren" : "Aktivieren"}
-                  className="flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-stone transition-colors hover:border-ink hover:text-ink disabled:opacity-50"
+                  className="flex items-center gap-1.5 rounded-2xl border border-line bg-white/80 px-3 py-2 text-xs font-medium text-stone transition-colors hover:border-ink hover:text-ink disabled:opacity-50"
                 >
                   {link.is_active ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
                   {link.is_active ? "Deaktivieren" : "Aktivieren"}
@@ -331,26 +494,26 @@ export function ShareLinksManager({ initialLinks, clientId, baseUrl }: Props) {
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
-                      onClick={() => handleDelete(link.id)}
-                      disabled={isLoading}
-                      className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-semibold text-danger hover:bg-red-100 disabled:opacity-50"
-                    >
-                      Wirklich löschen
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDeleteId(null)}
-                      className="rounded-lg border border-line px-3 py-1.5 text-xs text-stone hover:text-ink"
-                    >
-                      Abbrechen
-                    </button>
+                    onClick={() => handleDelete(link.id)}
+                    disabled={isLoading}
+                    className="rounded-2xl bg-red-50 px-3 py-2 text-xs font-semibold text-danger hover:bg-red-100 disabled:opacity-50"
+                  >
+                    Wirklich löschen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteId(null)}
+                    className="rounded-2xl border border-line bg-white/80 px-3 py-2 text-xs text-stone hover:text-ink"
+                  >
+                    Abbrechen
+                  </button>
                   </div>
                 ) : (
                   <button
                     type="button"
                     onClick={() => setConfirmDeleteId(link.id)}
                     title="Löschen"
-                    className="flex items-center rounded-lg border border-line p-1.5 text-stone transition-colors hover:border-danger hover:text-danger"
+                    className="flex items-center rounded-2xl border border-line bg-white/80 p-2 text-stone transition-colors hover:border-danger hover:text-danger"
                   >
                     <Trash2 className="size-3.5" />
                   </button>
@@ -358,7 +521,7 @@ export function ShareLinksManager({ initialLinks, clientId, baseUrl }: Props) {
               </div>
             </div>
 
-            <div className="mt-4 rounded-xl border border-line bg-white/70 p-4">
+            <div className="mt-4 rounded-[1.5rem] border border-white/80 bg-white/70 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-ink">Sichtbare Insights</p>
@@ -372,7 +535,7 @@ export function ShareLinksManager({ initialLinks, clientId, baseUrl }: Props) {
                     onClick={() =>
                       setOpenVisibilityId((current) => (current === link.id ? null : link.id))
                     }
-                    className="inline-flex min-w-[240px] items-center justify-between gap-3 rounded-xl border border-line bg-panel px-4 py-3 text-left text-sm text-ink transition-colors hover:border-ink"
+                    className="inline-flex min-w-[240px] items-center justify-between gap-3 rounded-2xl border border-white/80 bg-white/90 px-4 py-3 text-left text-sm text-ink transition-colors hover:border-ink"
                   >
                     <span className="truncate">{getVisibilitySummary(selectedVisibility)}</span>
                     <ChevronDown
@@ -385,7 +548,7 @@ export function ShareLinksManager({ initialLinks, clientId, baseUrl }: Props) {
                     type="button"
                     onClick={() => handleSaveVisibility(link)}
                     disabled={isLoading || selectedVisibility.length === 0}
-                    className="rounded-xl bg-ink px-4 py-3 text-xs font-semibold text-white transition-opacity disabled:opacity-50"
+                    className="rounded-2xl bg-ink px-4 py-3 text-xs font-semibold text-white shadow-lg shadow-black/10 transition-opacity disabled:opacity-50"
                   >
                     Rechte speichern
                   </button>
@@ -393,7 +556,7 @@ export function ShareLinksManager({ initialLinks, clientId, baseUrl }: Props) {
               </div>
 
               {openVisibilityId === link.id ? (
-                <div className="mt-4 rounded-xl border border-line bg-panel p-3 shadow-panel">
+                <div className="mt-4 rounded-[1.4rem] border border-white/80 bg-[linear-gradient(180deg,_rgba(250,250,249,0.95),_rgba(255,255,255,0.9))] p-3 shadow-panel">
                   <div className="grid gap-2 md:grid-cols-2">
                     {SHARE_VISIBILITY_OPTIONS.map((option) => {
                       const checked = selectedVisibility.includes(option.key);
@@ -403,8 +566,8 @@ export function ShareLinksManager({ initialLinks, clientId, baseUrl }: Props) {
                           key={option.key}
                           type="button"
                           onClick={() => toggleVisibility(link.id, option.key)}
-                          className={`flex items-start gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
-                            checked ? "border-ink bg-white" : "border-line bg-white/70"
+                          className={`flex items-start gap-3 rounded-2xl border px-3 py-3 text-left transition-colors ${
+                            checked ? "border-ink bg-white shadow-sm" : "border-line bg-white/70"
                           }`}
                         >
                           <span
@@ -434,7 +597,7 @@ export function ShareLinksManager({ initialLinks, clientId, baseUrl }: Props) {
       })}
 
       {links.length === 0 && (
-        <div className="rounded-xl border border-dashed border-line p-6 text-center text-sm text-stone">
+        <div className="rounded-[1.6rem] border border-dashed border-line bg-white/70 p-8 text-center text-sm text-stone">
           Erstelle deinen ersten Link und schicke ihn per Mail an den Kunden.
         </div>
       )}

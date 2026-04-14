@@ -77,6 +77,8 @@ Wenn `share_links` bereits vor der Rechteverwaltung angelegt wurde, fuehre zusae
 ```sql
 alter table public.share_links
 add column if not exists visible_sections_json jsonb not null default '[]'::jsonb;
+alter table public.share_links
+add column if not exists recipient_name_nullable text;
 ```
 
 Wenn dein bestehendes Projekt bereits vor der Media Galerie aufgesetzt wurde, fuehre zusaetzlich dieses SQL aus:
@@ -103,6 +105,30 @@ create table if not exists public.media_snapshots (
 
 create index if not exists idx_media_snapshots_account_kind
   on public.media_snapshots (account_id, media_kind, sort_order);
+
+alter table public.media_snapshots
+add column if not exists archived_media_url text;
+```
+
+Wenn dein bestehendes Projekt noch kein Story-Archiv hat, fuehre zusaetzlich dieses SQL aus:
+
+```sql
+create table if not exists public.story_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  account_id uuid not null references public.accounts(id) on delete cascade,
+  story_id text not null unique,
+  media_url text,
+  archived_media_url text,
+  timestamp timestamptz,
+  caption text,
+  saved_at timestamptz not null default now()
+);
+
+alter table public.story_snapshots
+add column if not exists archived_media_url text;
+
+create index if not exists idx_story_snapshots_account_timestamp
+  on public.story_snapshots (account_id, timestamp desc);
 ```
 
 ## Wichtige Ordner

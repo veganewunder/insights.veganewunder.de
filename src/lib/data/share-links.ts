@@ -7,6 +7,7 @@ export type ShareLinkRow = {
   client_id: string;
   token: string;
   link_name_nullable: string | null;
+  recipient_name_nullable: string | null;
   visible_sections_json: ShareVisibilityKey[];
   is_active: boolean;
   expires_at_nullable: string | null;
@@ -18,6 +19,7 @@ type RawShareLinkRow = {
   client_id: string;
   token: string;
   link_name_nullable?: string | null;
+  recipient_name_nullable?: string | null;
   visible_sections_json?: unknown;
   is_active: boolean;
   expires_at_nullable: string | null;
@@ -37,11 +39,19 @@ function normalizeLinkName(value: string | null | undefined) {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function selectColumns(includeLinkName = true, includeVisibility = true) {
+function selectColumns(
+  includeLinkName = true,
+  includeRecipientName = true,
+  includeVisibility = true,
+) {
   const parts = ["id", "client_id", "token"];
 
   if (includeLinkName) {
     parts.push("link_name_nullable");
+  }
+
+  if (includeRecipientName) {
+    parts.push("recipient_name_nullable");
   }
 
   if (includeVisibility) {
@@ -60,6 +70,7 @@ function mapShareLinkRow(
     client_id: link.client_id,
     token: link.token,
     link_name_nullable: normalizeLinkName(link.link_name_nullable),
+    recipient_name_nullable: normalizeLinkName(link.recipient_name_nullable),
     visible_sections_json: sanitizeShareVisibility(link.visible_sections_json),
     is_active: link.is_active,
     expires_at_nullable: link.expires_at_nullable,
@@ -78,16 +89,18 @@ export async function getShareLinksForClient(clientId: string): Promise<ShareLin
   if (error) {
     if (
       !isMissingShareLinksColumn(error.message, "visible_sections_json") &&
-      !isMissingShareLinksColumn(error.message, "link_name_nullable")
+      !isMissingShareLinksColumn(error.message, "link_name_nullable") &&
+      !isMissingShareLinksColumn(error.message, "recipient_name_nullable")
     ) {
       throw new Error(error.message);
     }
 
     const includeVisibility = !isMissingShareLinksColumn(error.message, "visible_sections_json");
     const includeLinkName = !isMissingShareLinksColumn(error.message, "link_name_nullable");
+    const includeRecipientName = !isMissingShareLinksColumn(error.message, "recipient_name_nullable");
     const fallback = await supabase
       .from("share_links")
-      .select(selectColumns(includeLinkName, includeVisibility))
+      .select(selectColumns(includeLinkName, includeRecipientName, includeVisibility))
       .eq("client_id", clientId)
       .order("created_at", { ascending: false });
 
@@ -103,6 +116,7 @@ export async function getShareLinksForClient(clientId: string): Promise<ShareLin
 export async function createShareLink(
   clientId: string,
   linkName: string | null,
+  recipientName: string | null,
   visibleSections: ShareVisibilityKey[] = DEFAULT_SHARE_VISIBILITY,
 ): Promise<ShareLinkRow> {
   const supabase = createSupabaseAdminClient();
@@ -114,6 +128,7 @@ export async function createShareLink(
       client_id: clientId,
       token,
       link_name_nullable: normalizeLinkName(linkName),
+      recipient_name_nullable: normalizeLinkName(recipientName),
       visible_sections_json: visibleSections,
       is_active: true,
       password_hash_nullable: null,
@@ -125,17 +140,20 @@ export async function createShareLink(
   if (error) {
     if (
       !isMissingShareLinksColumn(error.message, "visible_sections_json") &&
-      !isMissingShareLinksColumn(error.message, "link_name_nullable")
+      !isMissingShareLinksColumn(error.message, "link_name_nullable") &&
+      !isMissingShareLinksColumn(error.message, "recipient_name_nullable")
     ) {
       throw new Error(error.message);
     }
 
     const includeVisibility = !isMissingShareLinksColumn(error.message, "visible_sections_json");
     const includeLinkName = !isMissingShareLinksColumn(error.message, "link_name_nullable");
+    const includeRecipientName = !isMissingShareLinksColumn(error.message, "recipient_name_nullable");
     const insertPayload: {
       client_id: string;
       token: string;
       link_name_nullable?: string | null;
+      recipient_name_nullable?: string | null;
       visible_sections_json?: ShareVisibilityKey[];
       is_active: boolean;
       password_hash_nullable: null;
@@ -152,6 +170,10 @@ export async function createShareLink(
       insertPayload.link_name_nullable = normalizeLinkName(linkName);
     }
 
+    if (includeRecipientName) {
+      insertPayload.recipient_name_nullable = normalizeLinkName(recipientName);
+    }
+
     if (includeVisibility) {
       insertPayload.visible_sections_json = visibleSections;
     }
@@ -159,7 +181,7 @@ export async function createShareLink(
     const fallback = await supabase
       .from("share_links")
       .insert(insertPayload)
-      .select(selectColumns(includeLinkName, includeVisibility))
+      .select(selectColumns(includeLinkName, includeRecipientName, includeVisibility))
       .single();
 
     if (fallback.error) throw new Error(fallback.error.message);
@@ -192,11 +214,30 @@ export async function updateShareLinkVisibility(
     .single();
 
   if (error) {
+    if (
+      !isMissingShareLinksColumn(error.message, "visible_sections_json") &&
+      !isMissingShareLinksColumn(error.message, "link_name_nullable") &&
+      !isMissingShareLinksColumn(error.message, "recipient_name_nullable")
+    ) {
+      throw new Error(error.message);
+    }
+
     if (isMissingShareLinksColumn(error.message, "visible_sections_json")) {
       throw new Error("Bitte zuerst das Share Link Schema in Supabase aktualisieren");
     }
 
-    throw new Error(error.message);
+    const includeLinkName = !isMissingShareLinksColumn(error.message, "link_name_nullable");
+    const includeRecipientName = !isMissingShareLinksColumn(error.message, "recipient_name_nullable");
+    const fallback = await supabase
+      .from("share_links")
+      .update({ visible_sections_json: visibleSections })
+      .eq("id", id)
+      .select(selectColumns(includeLinkName, includeRecipientName, true))
+      .single();
+
+    if (fallback.error) throw new Error(fallback.error.message);
+
+    return mapShareLinkRow(fallback.data as unknown as RawShareLinkRow);
   }
 
   return mapShareLinkRow(data as unknown as RawShareLinkRow);
@@ -219,6 +260,42 @@ export async function updateShareLinkName(
       throw new Error("Bitte zuerst das Share Link Schema in Supabase aktualisieren");
     }
 
+    if (!isMissingShareLinksColumn(error.message, "recipient_name_nullable")) {
+      throw new Error(error.message);
+    }
+
+    const fallback = await supabase
+      .from("share_links")
+      .update({ link_name_nullable: normalizeLinkName(linkName) })
+      .eq("id", id)
+      .select(selectColumns(true, false, true))
+      .single();
+
+    if (fallback.error) throw new Error(fallback.error.message);
+
+    return mapShareLinkRow(fallback.data as unknown as RawShareLinkRow);
+  }
+
+  return mapShareLinkRow(data as unknown as RawShareLinkRow);
+}
+
+export async function updateShareLinkRecipientName(
+  id: string,
+  recipientName: string | null,
+): Promise<ShareLinkRow> {
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("share_links")
+    .update({ recipient_name_nullable: normalizeLinkName(recipientName) })
+    .eq("id", id)
+    .select(selectColumns())
+    .single();
+
+  if (error) {
+    if (isMissingShareLinksColumn(error.message, "recipient_name_nullable")) {
+      throw new Error("Bitte zuerst das Share Link Schema in Supabase aktualisieren");
+    }
+
     throw new Error(error.message);
   }
 
@@ -237,16 +314,18 @@ export async function getShareLinkByToken(token: string): Promise<ShareLinkRow |
   if (error) {
     if (
       !isMissingShareLinksColumn(error.message, "visible_sections_json") &&
-      !isMissingShareLinksColumn(error.message, "link_name_nullable")
+      !isMissingShareLinksColumn(error.message, "link_name_nullable") &&
+      !isMissingShareLinksColumn(error.message, "recipient_name_nullable")
     ) {
       throw new Error(error.message);
     }
 
     const includeVisibility = !isMissingShareLinksColumn(error.message, "visible_sections_json");
     const includeLinkName = !isMissingShareLinksColumn(error.message, "link_name_nullable");
+    const includeRecipientName = !isMissingShareLinksColumn(error.message, "recipient_name_nullable");
     const fallback = await supabase
       .from("share_links")
-      .select(selectColumns(includeLinkName, includeVisibility))
+      .select(selectColumns(includeLinkName, includeRecipientName, includeVisibility))
       .eq("token", token)
       .eq("is_active", true)
       .maybeSingle();

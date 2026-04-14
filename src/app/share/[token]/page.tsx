@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { notFound } from "next/navigation";
+import { AutoSyncOnView } from "@/components/dashboard/auto-sync-on-view";
 import { AudienceBars } from "@/components/dashboard/audience-bars";
 import { AudienceGenderPie } from "@/components/dashboard/audience-gender-pie";
 import { ComparisonGrid } from "@/components/dashboard/comparison-grid";
@@ -15,6 +16,7 @@ import { getDashboardClientByShareToken } from "@/lib/data/dashboard-store";
 import { getShareLinkByToken } from "@/lib/data/share-links";
 import { CONTENT_TYPE_CONFIG, DEFAULT_CONTENT_TYPE, isContentType } from "@/lib/insights/content-config";
 import { buildAverageMetrics } from "@/lib/insights/reporting";
+import { isNextNotFoundError } from "@/lib/next-errors";
 import { getVisibilityForMetric, hasShareAccess } from "@/lib/share-visibility";
 
 type PageProps = {
@@ -59,9 +61,13 @@ export default async function SharePage({ params, searchParams }: PageProps) {
       hasShareAccess(visibleSections, "audience_age_groups") ||
       hasShareAccess(visibleSections, "audience_gender");
     const reportElementId = `share-report-${token}`;
+    const greeting = shareLink.recipient_name_nullable
+      ? `Hey, ${shareLink.recipient_name_nullable}, hier findest du unsere aktuellen Insights. Wir freuen uns auf eine mögliche Zusammenarbeit.`
+      : "Hey, hier findest du unsere aktuellen Insights, wir freuen uns auf eine mögliche Zusammenarbeit.";
 
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-4 py-6 md:px-8 md:py-8">
+        <AutoSyncOnView />
         <header className="rounded-[2rem] border border-line bg-panel p-6 shadow-panel">
           <div className="flex flex-col items-center gap-5 text-center">
             <div className="flex flex-col items-center gap-3">
@@ -71,6 +77,7 @@ export default async function SharePage({ params, searchParams }: PageProps) {
                   <p className="text-sm font-medium text-stone">@{client.igUsername}</p>
                 )}
                 <h1 className="text-2xl font-bold tracking-tight text-ink">Instagram Reporting</h1>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-stone">{greeting}</p>
                 <a
                   href="https://instagram.com/veganewunder"
                   target="_blank"
@@ -206,6 +213,10 @@ export default async function SharePage({ params, searchParams }: PageProps) {
       </main>
     );
   } catch (error) {
+    if (isNextNotFoundError(error)) {
+      throw error;
+    }
+
     const message =
       error instanceof Error ? error.message : "Live Daten konnten nicht geladen werden";
 

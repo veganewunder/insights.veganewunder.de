@@ -10,12 +10,12 @@ export type ReportStatItem = {
 };
 
 const AVERAGE_METRIC_ORDER: MetricKey[] = [
+  "views",
   "likes",
   "comments",
   "shares",
   "saves",
   "replies",
-  "views",
   "reach",
 ];
 
