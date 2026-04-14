@@ -6,7 +6,6 @@ import { ComparisonGrid } from "@/components/dashboard/comparison-grid";
 import { KpiGrid } from "@/components/dashboard/kpi-grid";
 import { LiveDataErrorPanel } from "@/components/dashboard/live-data-error-panel";
 import { MediaGallery } from "@/components/dashboard/media-gallery";
-import { ReportExportActions } from "@/components/dashboard/report-export-actions";
 import { ReportStatGrid } from "@/components/dashboard/report-stat-grid";
 import { SyncBanner } from "@/components/dashboard/sync-banner";
 import { InsightsFilters } from "@/components/dashboard/insights-filters";
@@ -15,7 +14,7 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { getDashboardClientByShareToken } from "@/lib/data/dashboard-store";
 import { getShareLinkByToken } from "@/lib/data/share-links";
 import { CONTENT_TYPE_CONFIG, DEFAULT_CONTENT_TYPE, isContentType } from "@/lib/insights/content-config";
-import { buildAverageMetrics, formatAudienceDataDate } from "@/lib/insights/reporting";
+import { buildAverageMetrics } from "@/lib/insights/reporting";
 import { getVisibilityForMetric, hasShareAccess } from "@/lib/share-visibility";
 
 type PageProps = {
@@ -36,7 +35,7 @@ export default async function SharePage({ params, searchParams }: PageProps) {
       notFound();
     }
 
-    const activeRange = range === "30d" ? "30d" : "7d";
+    const activeRange = range === "7d" ? "7d" : "30d";
     const activeContentType = isContentType(type) ? type : DEFAULT_CONTENT_TYPE;
     const visibleSections = shareLink.visible_sections_json;
     const contentSlice = client.contentInsights[activeRange][activeContentType];
@@ -92,22 +91,12 @@ export default async function SharePage({ params, searchParams }: PageProps) {
           </div>
         </header>
 
-        <ReportExportActions
-          reportElementId={reportElementId}
-          clientName={client.name}
-          activeContentLabel={contentConfig.label}
-          activeRangeLabel={activeRange === "7d" ? "Letzte 7 Tage" : "Letzte 30 Tage"}
-          reportDateLabel={formatAudienceDataDate(client.lastSyncedAt)}
-          mediaItems={media}
-        />
-
         <div id={reportElementId} className="space-y-6">
           <SyncBanner lastSyncedAt={client.lastSyncedAt} compact />
 
           {hasShareAccess(visibleSections, "media_gallery") ? (
             <Panel className="p-5">
               <SectionHeading
-                eyebrow="Inhalte"
                 title={
                   activeContentType === "stories"
                     ? `Story-Abfolge der ${activeRange === "7d" ? "letzten 7 Tage" : "letzten 30 Tage"}`
@@ -124,50 +113,56 @@ export default async function SharePage({ params, searchParams }: PageProps) {
           ) : null}
 
           {summaryMetrics.length > 0 ? (
-            <section>
-              <div className="mb-4">
+            <Panel className="p-5">
+              <div>
                 <SectionHeading
                   title={`${contentConfig.label} auf einen Blick`}
                   description={`${contextLabel} auf Basis der wichtigsten Kennzahlen.`}
                 />
               </div>
-              <KpiGrid metrics={summaryMetrics} contextLabel={contextLabel} />
-            </section>
+              <div className="mt-5">
+                <KpiGrid metrics={summaryMetrics} contextLabel={contextLabel} />
+              </div>
+            </Panel>
           ) : null}
 
           {averageMetrics.length > 0 ? (
-            <section>
-              <div className="mb-4">
+            <Panel className="p-5">
+              <div>
                 <SectionHeading
                   title="Durchschnittliche Performance"
                   description="Durchschnittswerte pro Inhalt inklusive berechneter Engagement Rate."
                 />
               </div>
-              <ReportStatGrid items={averageMetrics} />
-            </section>
+              <div className="mt-5">
+                <ReportStatGrid items={averageMetrics} />
+              </div>
+            </Panel>
           ) : null}
 
           {summaryMetrics.length > 0 ? (
-            <section>
-              <div className="mb-4">
+            <Panel className="p-5">
+              <div>
                 <SectionHeading
                   title={`${contentConfig.label} im Zeitvergleich`}
                   description={`${contextLabel} im Vergleich zum vorherigen Zeitraum.`}
                 />
               </div>
-              <ComparisonGrid metrics={summaryMetrics} />
-            </section>
+              <div className="mt-5">
+                <ComparisonGrid metrics={summaryMetrics} />
+              </div>
+            </Panel>
           ) : null}
 
           {showAudienceSection ? (
-            <section>
-              <div className="mb-4">
+            <Panel className="p-5">
+              <div>
                 <SectionHeading
                   title="Zielgruppe im Überblick"
                   description="Standorte und demografische Schwerpunkte Ihrer Community."
                 />
               </div>
-              <div className="grid gap-4 lg:grid-cols-4">
+              <div className="mt-5 grid gap-4 lg:grid-cols-4">
                 {hasShareAccess(visibleSections, "audience_countries") ? (
                   <Panel className="p-5">
                     <p className="text-xs font-semibold uppercase tracking-widest text-stone">Top Länder</p>
@@ -205,7 +200,7 @@ export default async function SharePage({ params, searchParams }: PageProps) {
                   </Panel>
                 ) : null}
               </div>
-            </section>
+            </Panel>
           ) : null}
         </div>
       </main>

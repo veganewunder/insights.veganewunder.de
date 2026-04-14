@@ -73,18 +73,14 @@ export function SyncBanner({
       }`}
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-4">
+        <div className="flex items-center gap-2.5">
           <div
-            className={`mt-0.5 flex size-11 shrink-0 items-center justify-center rounded-full border ${
+            className={`flex size-11 shrink-0 items-center justify-center rounded-full ${
               syncState === "error"
-                ? "border-red-200 bg-red-50"
+                ? "text-red-500"
                 : syncState === "success"
-                ? "border-green-200 bg-green-50"
-                : freshness.tone === "fresh"
-                ? "border-emerald-200 bg-emerald-50"
-                : freshness.tone === "recent"
-                ? "border-lime-200 bg-lime-50"
-                : "border-amber-200 bg-amber-50"
+                ? "text-green-600"
+                : "text-stone"
             }`}
           >
             {syncState === "success" ? (
@@ -92,47 +88,41 @@ export function SyncBanner({
             ) : syncState === "error" ? (
               <AlertCircle className="size-5 text-red-500" />
             ) : (
-              <span
-                className={`size-3 rounded-full ${
-                  freshness.tone === "fresh"
-                    ? "bg-emerald-500"
-                    : freshness.tone === "recent"
-                    ? "bg-lime-500"
-                    : "bg-amber-500"
-                } ${syncState === "loading" ? "animate-pulse" : ""}`}
-              />
+              <span className="relative flex size-3 items-center justify-center">
+                <span
+                  className={`absolute inline-flex size-3 rounded-full ${
+                    freshness.tone === "fresh"
+                      ? "bg-emerald-500/30"
+                      : freshness.tone === "recent"
+                      ? "bg-lime-500/30"
+                      : "bg-amber-500/30"
+                  } animate-ping`}
+                />
+                <span
+                  className={`relative inline-flex size-2 rounded-full ${
+                    freshness.tone === "fresh"
+                      ? "bg-emerald-500"
+                      : freshness.tone === "recent"
+                      ? "bg-lime-500"
+                      : "bg-amber-500"
+                  } ${syncState === "loading" ? "animate-pulse" : ""}`}
+                />
+              </span>
             )}
           </div>
           <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-semibold text-ink">
-                {syncState === "success"
-                  ? "Daten werden aktualisiert"
-                  : syncState === "error"
-                  ? "Aktualisierung nicht möglich"
-                  : `Daten vom ${formatAudienceDataDate(syncedAt)}`}
-              </p>
-              {syncState === "idle" ? (
-                <span
-                  className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${
-                    freshness.tone === "fresh"
-                      ? "bg-emerald-100 text-emerald-700"
-                      : freshness.tone === "recent"
-                      ? "bg-lime-100 text-lime-700"
-                      : "bg-amber-100 text-amber-700"
-                  }`}
-                >
-                  {freshness.label}
-                </span>
-              ) : null}
-            </div>
-            <p className="mt-1 text-sm text-stone">
-              {syncState === "error"
-                ? errorMsg
-                : syncState === "success"
-                ? "Die neuesten Werte werden geladen."
-                : `${freshness.detail} Zuletzt aktualisiert am ${formatDateTime(syncedAt)}.`}
+            <p className="text-sm font-semibold text-ink">
+              {syncState === "success"
+                ? "Daten werden aktualisiert"
+                : syncState === "error"
+                ? "Aktualisierung nicht möglich"
+                : `Daten vom ${formatAudienceDataDate(syncedAt)}`}
             </p>
+            {syncState === "error" ? (
+              <p className="mt-1 text-sm text-stone">{errorMsg}</p>
+            ) : syncState === "success" ? (
+              <p className="mt-1 text-sm text-stone">Die neuesten Werte werden geladen.</p>
+            ) : null}
           </div>
         </div>
 
