@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { CONTENT_TYPE_CONFIG } from "@/lib/insights/content-config";
 import { getMetricLabel } from "@/lib/insights/metric-labels";
 import { ClientDashboardRecord, ContentType, MetricKey, RangeKey } from "@/types/insights";
@@ -31,7 +32,7 @@ export function ClientHeader({
             <div className="flex items-center gap-2">
               <Image src="/logo.png" alt="Vegane Wunder Logo" width={28} height={28} className="size-7 object-contain" />
               <p className="text-xs font-medium uppercase tracking-widest text-stone">
-                Analyseansicht
+                Kundenreporting
               </p>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -42,7 +43,18 @@ export function ClientHeader({
             </div>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-stone">
               {CONTENT_TYPE_CONFIG[activeContentType].description}. Zeitraum{" "}
-              {getRangeLabel(activeRange)}. Aktive Metrik {getMetricLabel(activeMetric)}.
+              {getRangeLabel(activeRange)}. Fokus auf {getMetricLabel(activeMetric)}.
+            </p>
+            <p className="mt-3 text-sm text-stone">
+              Präsentiert von{" "}
+              <Link
+                href="https://instagram.com/veganewunder"
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold text-ink underline underline-offset-4"
+              >
+                @veganewunder
+              </Link>
             </p>
           </div>
 

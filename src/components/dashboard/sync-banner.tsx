@@ -3,8 +3,35 @@
 import { useState } from "react";
 import { RefreshCw, CheckCircle, AlertCircle } from "lucide-react";
 import { formatDateTime } from "@/lib/insights/formatters";
+import { formatAudienceDataDate } from "@/lib/insights/reporting";
 
 type SyncState = "idle" | "loading" | "success" | "error";
+
+function getFreshnessState(date: Date) {
+  const diffHours = (Date.now() - date.getTime()) / (1000 * 60 * 60);
+
+  if (diffHours <= 24) {
+    return {
+      label: "Frische Daten",
+      tone: "fresh",
+      detail: "Die Auswertung wurde aktuell bereitgestellt.",
+    } as const;
+  }
+
+  if (diffHours <= 72) {
+    return {
+      label: "Aktueller Datenstand",
+      tone: "recent",
+      detail: "Die Auswertung ist aktuell und für Reporting-Zwecke geeignet.",
+    } as const;
+  }
+
+  return {
+    label: "Archivierter Datenstand",
+    tone: "aged",
+    detail: "Die Daten sind etwas älter, bleiben aber als Referenz nutzbar.",
+  } as const;
+}
 
 export function SyncBanner({
   lastSyncedAt,
@@ -18,6 +45,7 @@ export function SyncBanner({
   const [syncState, setSyncState] = useState<SyncState>("idle");
   const [syncedAt, setSyncedAt] = useState<Date>(lastSyncedAt);
   const [errorMsg, setErrorMsg] = useState("");
+  const freshness = getFreshnessState(syncedAt);
 
   async function handleSync() {
     setSyncState("loading");
@@ -40,35 +68,70 @@ export function SyncBanner({
 
   return (
     <section
-      className={`rounded-2xl border border-line bg-panel shadow-panel ${
+      className={`rounded-[2rem] border border-line bg-panel shadow-panel ${
         compact ? "p-4" : "p-5"
       }`}
     >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-zinc-100">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-4">
+          <div
+            className={`mt-0.5 flex size-11 shrink-0 items-center justify-center rounded-full border ${
+              syncState === "error"
+                ? "border-red-200 bg-red-50"
+                : syncState === "success"
+                ? "border-green-200 bg-green-50"
+                : freshness.tone === "fresh"
+                ? "border-emerald-200 bg-emerald-50"
+                : freshness.tone === "recent"
+                ? "border-lime-200 bg-lime-50"
+                : "border-amber-200 bg-amber-50"
+            }`}
+          >
             {syncState === "success" ? (
-              <CheckCircle className="size-4 text-green-600" />
+              <CheckCircle className="size-5 text-green-600" />
             ) : syncState === "error" ? (
-              <AlertCircle className="size-4 text-red-500" />
+              <AlertCircle className="size-5 text-red-500" />
             ) : (
-              <RefreshCw className={`size-4 text-stone ${syncState === "loading" ? "animate-spin" : ""}`} />
+              <span
+                className={`size-3 rounded-full ${
+                  freshness.tone === "fresh"
+                    ? "bg-emerald-500"
+                    : freshness.tone === "recent"
+                    ? "bg-lime-500"
+                    : "bg-amber-500"
+                } ${syncState === "loading" ? "animate-pulse" : ""}`}
+              />
             )}
           </div>
           <div>
-            <p className="text-sm font-semibold text-ink">
-              {syncState === "success"
-                ? "Sync erfolgreich"
-                : syncState === "error"
-                ? "Sync fehlgeschlagen"
-                : `Letzter Sync ${formatDateTime(syncedAt)}`}
-            </p>
-            <p className="text-xs text-stone">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-ink">
+                {syncState === "success"
+                  ? "Daten werden aktualisiert"
+                  : syncState === "error"
+                  ? "Aktualisierung nicht möglich"
+                  : `Daten vom ${formatAudienceDataDate(syncedAt)}`}
+              </p>
+              {syncState === "idle" ? (
+                <span
+                  className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${
+                    freshness.tone === "fresh"
+                      ? "bg-emerald-100 text-emerald-700"
+                      : freshness.tone === "recent"
+                      ? "bg-lime-100 text-lime-700"
+                      : "bg-amber-100 text-amber-700"
+                  }`}
+                >
+                  {freshness.label}
+                </span>
+              ) : null}
+            </div>
+            <p className="mt-1 text-sm text-stone">
               {syncState === "error"
                 ? errorMsg
                 : syncState === "success"
-                ? "Daten werden neu geladen…"
-                : "Neueste Plattformdaten können zeitverzögert nachlaufen."}
+                ? "Die neuesten Werte werden geladen."
+                : `${freshness.detail} Zuletzt aktualisiert am ${formatDateTime(syncedAt)}.`}
             </p>
           </div>
         </div>
@@ -81,7 +144,7 @@ export function SyncBanner({
             className="inline-flex items-center gap-2 rounded-xl bg-ink px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:opacity-50 sm:shrink-0"
           >
             <RefreshCw className={`size-4 ${syncState === "loading" ? "animate-spin" : ""}`} />
-            {syncState === "loading" ? "Lädt…" : "Jetzt syncen"}
+            {syncState === "loading" ? "Aktualisiert..." : "Daten aktualisieren"}
           </button>
         )}
       </div>

@@ -149,15 +149,21 @@ export function InsightsFilters({
       </div>
 
       {sheetMode ? (
-        <div className="fixed inset-0 z-50 bg-black/35 px-4 py-6 backdrop-blur-[2px]">
-          <div className="mx-auto flex h-full max-w-md items-end">
-            <div className="w-full overflow-hidden rounded-[2rem] bg-white shadow-2xl">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4 backdrop-blur-[2px]"
+          onClick={() => setSheetMode(null)}
+        >
+          <div className="w-full max-w-md">
+            <div
+              className="relative w-full overflow-hidden rounded-[2rem] bg-white shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
               <div className="flex items-center justify-between px-5 pb-3 pt-4">
                 <div className="mx-auto h-1 w-12 rounded-full bg-zinc-300" />
                 <button
                   type="button"
                   onClick={() => setSheetMode(null)}
-                  className="absolute right-8 rounded-full p-2 text-stone hover:text-ink"
+                  className="absolute right-4 top-4 inline-flex size-10 items-center justify-center rounded-full border border-line bg-white text-stone shadow-sm transition hover:border-ink hover:text-ink"
                   aria-label="Schließen"
                 >
                   <X className="size-4" />
@@ -248,4 +254,3 @@ export function InsightsFilters({
     </>
   );
 }
-

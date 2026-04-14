@@ -12,6 +12,14 @@ function toFlagEmoji(input: string) {
   );
 }
 
+function getCountryFlag(item: AudienceBreakdownItem) {
+  if (item.key.length === 2) {
+    return toFlagEmoji(item.key);
+  }
+
+  return toFlagEmoji(item.label);
+}
+
 export function AudienceBars({ items }: { items: AudienceBreakdownItem[] }) {
   const max = Math.max(...items.map((item) => item.value), 1);
 
@@ -20,7 +28,7 @@ export function AudienceBars({ items }: { items: AudienceBreakdownItem[] }) {
       {items.map((item) => (
         <div key={item.key} className="flex items-center gap-3">
           <span className="flex w-32 shrink-0 items-center gap-2 text-sm text-ink">
-            {toFlagEmoji(item.label) ? <span>{toFlagEmoji(item.label)}</span> : null}
+            {getCountryFlag(item) ? <span>{getCountryFlag(item)}</span> : null}
             <span>{item.label}</span>
           </span>
           <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-100">

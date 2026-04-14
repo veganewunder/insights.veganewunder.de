@@ -1,10 +1,13 @@
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { AudienceBars } from "@/components/dashboard/audience-bars";
+import { AudienceGenderPie } from "@/components/dashboard/audience-gender-pie";
 import { ComparisonGrid } from "@/components/dashboard/comparison-grid";
 import { KpiGrid } from "@/components/dashboard/kpi-grid";
 import { LiveDataErrorPanel } from "@/components/dashboard/live-data-error-panel";
 import { MediaGallery } from "@/components/dashboard/media-gallery";
+import { ReportExportActions } from "@/components/dashboard/report-export-actions";
+import { ReportStatGrid } from "@/components/dashboard/report-stat-grid";
 import { SyncBanner } from "@/components/dashboard/sync-banner";
 import { InsightsFilters } from "@/components/dashboard/insights-filters";
 import { Panel } from "@/components/ui/panel";
@@ -12,7 +15,7 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { getDashboardClientByShareToken } from "@/lib/data/dashboard-store";
 import { getShareLinkByToken } from "@/lib/data/share-links";
 import { CONTENT_TYPE_CONFIG, DEFAULT_CONTENT_TYPE, isContentType } from "@/lib/insights/content-config";
-import { buildContentListForMetric, buildTimelineForMetric } from "@/lib/insights/content-insights";
+import { buildAverageMetrics, formatAudienceDataDate } from "@/lib/insights/reporting";
 import { getVisibilityForMetric, hasShareAccess } from "@/lib/share-visibility";
 
 type PageProps = {
@@ -46,25 +49,17 @@ export default async function SharePage({ params, searchParams }: PageProps) {
       ? (metric as typeof availableMetrics[number])
       : (availableMetrics[0] ?? CONTENT_TYPE_CONFIG[activeContentType].primaryMetric);
     const audience = client.audience[activeRange];
-    const content = hasShareAccess(visibleSections, "content_performance")
-      ? buildContentListForMetric(
-          contentSlice.media,
-          activeMetric,
-          CONTENT_TYPE_CONFIG[activeContentType].secondaryMetric,
-        )
-      : [];
-    const timelinePoints = hasShareAccess(visibleSections, "timeline")
-      ? buildTimelineForMetric(contentSlice.media, activeMetric)
-      : [];
     const media = hasShareAccess(visibleSections, "media_gallery") ? contentSlice.media : [];
     const contentConfig = CONTENT_TYPE_CONFIG[activeContentType];
     const summaryMetrics = metrics.slice(0, 3);
     const contextLabel = `${contentConfig.label} · ${activeRange === "7d" ? "Letzte 7 Tage" : "Letzte 30 Tage"}`;
+    const averageMetrics = buildAverageMetrics(media);
     const showAudienceSection =
       hasShareAccess(visibleSections, "audience_countries") ||
       hasShareAccess(visibleSections, "audience_cities") ||
       hasShareAccess(visibleSections, "audience_age_groups") ||
       hasShareAccess(visibleSections, "audience_gender");
+    const reportElementId = `share-report-${token}`;
 
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-4 py-6 md:px-8 md:py-8">
@@ -76,7 +71,15 @@ export default async function SharePage({ params, searchParams }: PageProps) {
                 {client.igUsername && (
                   <p className="text-sm font-medium text-stone">@{client.igUsername}</p>
                 )}
-                <h1 className="text-2xl font-bold tracking-tight text-ink">Instagram Insights</h1>
+                <h1 className="text-2xl font-bold tracking-tight text-ink">Instagram Reporting</h1>
+                <a
+                  href="https://instagram.com/veganewunder"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-block text-sm font-semibold text-ink underline underline-offset-4"
+                >
+                  @veganewunder
+                </a>
               </div>
             </div>
             <InsightsFilters
@@ -89,107 +92,122 @@ export default async function SharePage({ params, searchParams }: PageProps) {
           </div>
         </header>
 
-        <SyncBanner lastSyncedAt={client.lastSyncedAt} compact />
+        <ReportExportActions
+          reportElementId={reportElementId}
+          clientName={client.name}
+          activeContentLabel={contentConfig.label}
+          activeRangeLabel={activeRange === "7d" ? "Letzte 7 Tage" : "Letzte 30 Tage"}
+          reportDateLabel={formatAudienceDataDate(client.lastSyncedAt)}
+          mediaItems={media}
+        />
 
-        {hasShareAccess(visibleSections, "media_gallery") ? (
-          <Panel className="p-5">
-            <SectionHeading
-              eyebrow="Inhalte"
-              title={
-                activeContentType === "stories"
-                  ? `Story Strip der ${activeRange === "7d" ? "letzten 7 Tage" : "letzten 30 Tage"}`
-                  : `${contentConfig.label} im Detail`
-              }
-              description={
-                activeContentType === "stories"
-                  ? "Stories werden als sequenzieller Stream mit Replies, Exits und Navigation dargestellt."
-                  : `Visuelle Einzelansicht für ${contentConfig.label.toLowerCase()} im freigegebenen Reporting.`
-              }
-            />
-            <MediaGallery items={media} contentType={activeContentType} />
-          </Panel>
-        ) : null}
+        <div id={reportElementId} className="space-y-6">
+          <SyncBanner lastSyncedAt={client.lastSyncedAt} compact />
 
-        {summaryMetrics.length > 0 ? (
-          <section>
-            <div className="mb-4">
+          {hasShareAccess(visibleSections, "media_gallery") ? (
+            <Panel className="p-5">
               <SectionHeading
-                eyebrow="KPI Summary"
-                title={`${contentConfig.label} auf einen Blick`}
-                description={`${contextLabel} auf Basis der wichtigsten Kennzahlen.`}
+                eyebrow="Inhalte"
+                title={
+                  activeContentType === "stories"
+                    ? `Story-Abfolge der ${activeRange === "7d" ? "letzten 7 Tage" : "letzten 30 Tage"}`
+                    : `${contentConfig.label} im Detail`
+                }
+                description={
+                  activeContentType === "stories"
+                    ? "Stories werden in chronologischer Reihenfolge mit den wichtigsten Reaktionen dargestellt."
+                    : `Alle ${contentConfig.label.toLowerCase()} des gewählten Zeitraums auf einen Blick.`
+                }
               />
-            </div>
-            <KpiGrid metrics={summaryMetrics} contextLabel={contextLabel} />
-          </section>
-        ) : null}
+              <MediaGallery items={media} contentType={activeContentType} />
+            </Panel>
+          ) : null}
 
-        {summaryMetrics.length > 0 ? (
-          <section>
-            <div className="mb-4">
-              <SectionHeading
-                eyebrow="Vorperiode"
-                title={`${contentConfig.label} im Vergleich`}
-                description={`${contextLabel} im Vergleich zur direkt vorherigen Periode.`}
-              />
-            </div>
-            <ComparisonGrid metrics={summaryMetrics} />
-          </section>
-        ) : null}
+          {summaryMetrics.length > 0 ? (
+            <section>
+              <div className="mb-4">
+                <SectionHeading
+                  title={`${contentConfig.label} auf einen Blick`}
+                  description={`${contextLabel} auf Basis der wichtigsten Kennzahlen.`}
+                />
+              </div>
+              <KpiGrid metrics={summaryMetrics} contextLabel={contextLabel} />
+            </section>
+          ) : null}
 
+          {averageMetrics.length > 0 ? (
+            <section>
+              <div className="mb-4">
+                <SectionHeading
+                  title="Durchschnittliche Performance"
+                  description="Durchschnittswerte pro Inhalt inklusive berechneter Engagement Rate."
+                />
+              </div>
+              <ReportStatGrid items={averageMetrics} />
+            </section>
+          ) : null}
 
-        {showAudienceSection ? (
-          <section>
-            <div className="mb-4">
-              <SectionHeading
-                eyebrow="Audience"
-                title="Audience Composition"
-                description="Demografische Verteilung deiner Follower"
-              />
-            </div>
-            <div className="grid gap-4 lg:grid-cols-4">
-              {hasShareAccess(visibleSections, "audience_countries") ? (
-                <Panel className="p-5">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-stone">Top Länder</p>
-                  {audience.countries.length > 0 ? (
-                    <AudienceBars items={audience.countries} />
-                  ) : (
-                    <p className="mt-4 text-sm text-stone">Keine Daten verfügbar.</p>
-                  )}
-                </Panel>
-              ) : null}
-              {hasShareAccess(visibleSections, "audience_cities") ? (
-                <Panel className="p-5">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-stone">Top Städte</p>
-                  {audience.cities.length > 0 ? (
-                    <AudienceBars items={audience.cities} />
-                  ) : (
-                    <p className="mt-4 text-sm text-stone">Keine Daten verfügbar.</p>
-                  )}
-                </Panel>
-              ) : null}
-              {hasShareAccess(visibleSections, "audience_age_groups") ? (
-                <Panel className="p-5">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-stone">Altersgruppen</p>
-                  {audience.ageGroups.length > 0 ? (
-                    <AudienceBars items={audience.ageGroups} />
-                  ) : (
-                    <p className="mt-4 text-sm text-stone">Keine Daten verfügbar.</p>
-                  )}
-                </Panel>
-              ) : null}
-              {hasShareAccess(visibleSections, "audience_gender") ? (
-                <Panel className="p-5">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-stone">Geschlecht</p>
-                  {audience.gender.length > 0 ? (
-                    <AudienceBars items={audience.gender} />
-                  ) : (
-                    <p className="mt-4 text-sm text-stone">Keine Daten verfügbar.</p>
-                  )}
-                </Panel>
-              ) : null}
-            </div>
-          </section>
-        ) : null}
+          {summaryMetrics.length > 0 ? (
+            <section>
+              <div className="mb-4">
+                <SectionHeading
+                  title={`${contentConfig.label} im Zeitvergleich`}
+                  description={`${contextLabel} im Vergleich zum vorherigen Zeitraum.`}
+                />
+              </div>
+              <ComparisonGrid metrics={summaryMetrics} />
+            </section>
+          ) : null}
+
+          {showAudienceSection ? (
+            <section>
+              <div className="mb-4">
+                <SectionHeading
+                  title="Zielgruppe im Überblick"
+                  description="Standorte und demografische Schwerpunkte Ihrer Community."
+                />
+              </div>
+              <div className="grid gap-4 lg:grid-cols-4">
+                {hasShareAccess(visibleSections, "audience_countries") ? (
+                  <Panel className="p-5">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-stone">Top Länder</p>
+                    {audience.countries.length > 0 ? (
+                      <AudienceBars items={audience.countries} />
+                    ) : (
+                      <p className="mt-4 text-sm text-stone">Keine Daten verfügbar.</p>
+                    )}
+                  </Panel>
+                ) : null}
+                {hasShareAccess(visibleSections, "audience_cities") ? (
+                  <Panel className="p-5">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-stone">Top Städte</p>
+                    {audience.cities.length > 0 ? (
+                      <AudienceBars items={audience.cities} />
+                    ) : (
+                      <p className="mt-4 text-sm text-stone">Keine Daten verfügbar.</p>
+                    )}
+                  </Panel>
+                ) : null}
+                {hasShareAccess(visibleSections, "audience_age_groups") ? (
+                  <Panel className="p-5">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-stone">Altersgruppen</p>
+                    {audience.ageGroups.length > 0 ? (
+                      <AudienceBars items={audience.ageGroups} />
+                    ) : (
+                      <p className="mt-4 text-sm text-stone">Keine Daten verfügbar.</p>
+                    )}
+                  </Panel>
+                ) : null}
+                {hasShareAccess(visibleSections, "audience_gender") ? (
+                  <Panel className="p-5">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-stone">Geschlechterverteilung</p>
+                    <AudienceGenderPie items={audience.gender} />
+                  </Panel>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
+        </div>
       </main>
     );
   } catch (error) {

@@ -33,7 +33,7 @@ export function OverviewCard({ client }: { client: ClientDashboardRecord }) {
       </div>
 
       <div className="mt-6 flex items-center justify-between text-sm text-stone">
-        <span>Letzter Sync {formatDateTime(client.lastSyncedAt)}</span>
+        <span>Datenstand {formatDateTime(client.lastSyncedAt)}</span>
         <span className="font-medium text-ink transition group-hover:translate-x-1">
           Oeffnen
         </span>

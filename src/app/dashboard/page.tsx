@@ -32,7 +32,7 @@ export default async function DashboardPage() {
             <h1 className="mt-1 text-2xl font-bold text-ink">Kunden & Share Links</h1>
           </div>
           <div className="rounded-xl border border-line bg-panel px-4 py-3 text-sm shadow-panel">
-            <p className="text-stone">Letzter Sync</p>
+            <p className="text-stone">Datenstand</p>
             <p className="mt-0.5 font-semibold text-ink">{formatDateTime(client.lastSyncedAt)}</p>
           </div>
         </section>

@@ -18,7 +18,7 @@ export function ComparisonGrid({ metrics }: { metrics: KpiCardRecord[] }) {
               <p className="text-3xl font-bold tracking-tight text-ink">
                 {metric.changeLabel}
               </p>
-              <p className="mt-2 text-xs text-stone">Vergleich zur Vorperiode</p>
+              <p className="mt-2 text-xs text-stone">Vergleich zum vorherigen Zeitraum</p>
             </div>
             <span
               className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -35,4 +35,3 @@ export function ComparisonGrid({ metrics }: { metrics: KpiCardRecord[] }) {
     </div>
   );
 }
-
