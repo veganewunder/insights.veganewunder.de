@@ -225,6 +225,7 @@ export type DatabaseTables = {
     id: string;
     client_id: string;
     token: string;
+    link_name_nullable: string | null;
     visible_sections_json: ShareVisibilityKey[] | null;
     password_hash_nullable: string | null;
     expires_at_nullable: string | null;

@@ -52,6 +52,12 @@ export function ShareLinksManager({ initialLinks, clientId, baseUrl }: Props) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openVisibilityId, setOpenVisibilityId] = useState<string | null>(null);
+  const [newLinkName, setNewLinkName] = useState("");
+  const [draftNames, setDraftNames] = useState<Record<string, string>>(
+    Object.fromEntries(
+      initialLinks.map((link) => [link.id, link.link_name_nullable ?? ""]),
+    ),
+  );
   const [draftVisibility, setDraftVisibility] = useState<Record<string, ShareVisibilityKey[]>>(
     Object.fromEntries(initialLinks.map((link) => [link.id, link.visible_sections_json])),
   );
@@ -94,6 +100,7 @@ export function ShareLinksManager({ initialLinks, clientId, baseUrl }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clientId,
+          linkName: newLinkName.trim() || null,
           visibleSections: SHARE_VISIBILITY_OPTIONS.map((option) => option.key),
         }),
       });
@@ -104,13 +111,45 @@ export function ShareLinksManager({ initialLinks, clientId, baseUrl }: Props) {
       }
       const link = payload as ShareLinkRow;
       setLinks((prev) => [link, ...prev]);
+      setDraftNames((prev) => ({
+        ...prev,
+        [link.id]: link.link_name_nullable ?? "",
+      }));
       setDraftVisibility((prev) => ({
         ...prev,
         [link.id]: link.visible_sections_json,
       }));
       setOpenVisibilityId(link.id);
+      setNewLinkName("");
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function handleSaveName(link: ShareLinkRow) {
+    setPendingId(link.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/share-links/${link.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          linkName: draftNames[link.id] ?? "",
+        }),
+      });
+      const payload = await res.json() as ShareLinkRow | { message?: string };
+      if (!res.ok) {
+        setError((payload as { message?: string }).message ?? "Bezeichnung konnte nicht gespeichert werden");
+        return;
+      }
+      const updated = payload as ShareLinkRow;
+      setLinks((prev) => prev.map((entry) => (entry.id === link.id ? updated : entry)));
+      setDraftNames((prev) => ({
+        ...prev,
+        [link.id]: updated.link_name_nullable ?? "",
+      }));
+    } finally {
+      setPendingId(null);
     }
   }
 
@@ -187,7 +226,23 @@ export function ShareLinksManager({ initialLinks, clientId, baseUrl }: Props) {
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 rounded-2xl border border-line bg-white/70 p-4 md:flex-row md:items-end md:justify-between">
+        <div className="w-full max-w-md">
+          <label htmlFor="new-share-link-name" className="text-sm font-semibold text-ink">
+            Interne Bezeichnung
+          </label>
+          <p className="mt-1 text-xs leading-5 text-stone">
+            Zum Beispiel: Kaufland April Reporting oder Edeka Agenturfreigabe.
+          </p>
+          <input
+            id="new-share-link-name"
+            type="text"
+            value={newLinkName}
+            onChange={(event) => setNewLinkName(event.target.value)}
+            placeholder="Link intern benennen"
+            className="mt-3 w-full rounded-xl border border-line bg-panel px-4 py-3 text-sm text-ink outline-none transition focus:border-ink"
+          />
+        </div>
         <p className="text-sm text-stone">
           {links.length === 0 ? "Noch keine Links erstellt." : `${links.length} Link${links.length !== 1 ? "s" : ""}`}
         </p>
@@ -198,7 +253,7 @@ export function ShareLinksManager({ initialLinks, clientId, baseUrl }: Props) {
           className="inline-flex items-center gap-2 rounded-lg bg-ink px-4 py-2 text-sm font-medium text-white transition-opacity disabled:opacity-60"
         >
           <Plus className="size-4" />
-          {creating ? "Wird erstellt…" : "Neuen Link erstellen"}
+          {creating ? "Sync und Link werden erstellt…" : "Neuen Link erstellen"}
         </button>
       </div>
 
@@ -228,6 +283,25 @@ export function ShareLinksManager({ initialLinks, clientId, baseUrl }: Props) {
                     {link.is_active ? "Aktiv" : "Inaktiv"}
                   </span>
                   <span className="text-xs text-stone">{formatDate(link.created_at)}</span>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <input
+                    type="text"
+                    value={draftNames[link.id] ?? ""}
+                    onChange={(event) =>
+                      setDraftNames((prev) => ({ ...prev, [link.id]: event.target.value }))
+                    }
+                    placeholder="Interne Bezeichnung"
+                    className="w-full max-w-sm rounded-xl border border-line bg-panel px-3 py-2 text-sm font-medium text-ink outline-none transition focus:border-ink"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleSaveName(link)}
+                    disabled={isLoading}
+                    className="inline-flex shrink-0 items-center rounded-xl border border-line px-3 py-2 text-xs font-semibold text-ink transition hover:border-ink disabled:opacity-50"
+                  >
+                    Bezeichnung speichern
+                  </button>
                 </div>
                 <Link
                   href={url}

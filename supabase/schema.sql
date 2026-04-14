@@ -102,12 +102,16 @@ create table if not exists public.share_links (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null references public.clients(id) on delete cascade,
   token text not null unique,
+  link_name_nullable text,
   visible_sections_json jsonb not null default '[]'::jsonb,
   password_hash_nullable text,
   expires_at_nullable timestamptz,
   is_active boolean not null default true,
   created_at timestamptz not null default now()
 );
+
+alter table public.share_links
+  add column if not exists link_name_nullable text;
 
 create index if not exists idx_insight_snapshots_account_period_dates
   on public.insight_snapshots (account_id, period_key, start_date, end_date);

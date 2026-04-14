@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deleteShareLink, setShareLinkActive, updateShareLinkVisibility } from "@/lib/data/share-links";
+import {
+  deleteShareLink,
+  setShareLinkActive,
+  updateShareLinkName,
+  updateShareLinkVisibility,
+} from "@/lib/data/share-links";
 import { sanitizeShareVisibility } from "@/lib/share-visibility";
 
 type Params = { params: Promise<{ id: string }> };
@@ -7,11 +12,20 @@ type Params = { params: Promise<{ id: string }> };
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
     const { id } = await params;
-    const body = await request.json() as { is_active?: boolean; visibleSections?: unknown };
+    const body = await request.json() as {
+      is_active?: boolean;
+      visibleSections?: unknown;
+      linkName?: string | null;
+    };
 
     if (typeof body.is_active === "boolean") {
       await setShareLinkActive(id, body.is_active);
       return NextResponse.json({ ok: true });
+    }
+
+    if ("linkName" in body) {
+      const link = await updateShareLinkName(id, body.linkName ?? null);
+      return NextResponse.json(link);
     }
 
     const link = await updateShareLinkVisibility(id, sanitizeShareVisibility(body.visibleSections));
